@@ -131,4 +131,11 @@ Successfully tested with Italian digital terrestrial and satellite channels.
 
 **Not recommended for:** heavy usage, production with many simultaneous users, 24/7 streaming.
 
+## 📸 Screenshots
+
+### Main Interface
+![LightIPTV Main Interface](images/screenshot.jpeg)
+
+### Debug Mode (Press H)
+![LightIPTV Debug Mode with FFmpeg Log](images/screenshot-debug.jpeg)
 
