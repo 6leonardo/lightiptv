@@ -107,7 +107,7 @@ The log updates in real-time during stream preparation and remains available dur
 ## 📝 Technical Notes
 
 - **Base image**: `node:20-alpine` (~150MB final with FFmpeg)
-- **FFmpeg**: HLS transcoding with 10-second segments
+- **FFmpeg**: HLS transcoding with 4-second segments
 - **Stream sharing**: Reuses same FFmpeg process for identical URLs
 - **Auto-cleanup**: Inactive streams terminated after 60 seconds
 - **EPG cache**: 1-hour cache duration to reduce Threadfin calls
@@ -119,4 +119,16 @@ The log updates in real-time during stream preparation and remains available dur
 - Occasional browser viewing
 - Development/staging environment
 
+## ✅ Tested With
+
+**Italian TV Channels:**
+- **M3U Playlist**: [greenarw/tv_italia.m3u](https://gist.github.com/greenarw/efa4568ed2fa2e53a1aec9073d027243)
+  - Direct link: `https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u`
+- **EPG (DTT & SAT)**: [sfiorini/IPTV-Italy](https://github.com/sfiorini/IPTV-Italy)
+  - Direct link: `http://116.202.210.205/test/it_dttsat_full.xml`
+
+Successfully tested with Italian digital terrestrial and satellite channels.
+
 **Not recommended for:** heavy usage, production with many simultaneous users, 24/7 streaming.
+
+
