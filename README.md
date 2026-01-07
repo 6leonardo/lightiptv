@@ -92,6 +92,15 @@ docker-compose down
 
 Open browser: `http://localhost:3005`
 
+
+## 📸 Screenshots
+
+### Main Interface
+![LightIPTV Main Interface](images/screenshot.jpeg)
+
+### Debug Mode (Press H)
+![LightIPTV Debug Mode with FFmpeg Log](images/screenshot-debug.jpeg)
+
 ## 🔍 Debug with H key
 
 Press **`H`** key to show/hide real-time FFmpeg log.
@@ -130,12 +139,4 @@ The log updates in real-time during stream preparation and remains available dur
 Successfully tested with Italian digital terrestrial and satellite channels.
 
 **Not recommended for:** heavy usage, production with many simultaneous users, 24/7 streaming.
-
-## 📸 Screenshots
-
-### Main Interface
-![LightIPTV Main Interface](images/screenshot.jpeg)
-
-### Debug Mode (Press H)
-![LightIPTV Debug Mode with FFmpeg Log](images/screenshot-debug.jpeg)
 
