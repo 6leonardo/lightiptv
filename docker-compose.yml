@@ -11,7 +11,7 @@ services:
       - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
       - PORT=3005
     volumes:
-      - ./streams:/app/public/streams
+      - ./streams:/app/app/public/streams
     networks:
       - iptv-network
 

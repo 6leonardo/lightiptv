@@ -1,6 +1,8 @@
 node_modules/
 .env
 *.log
+*.backup
 .DS_Store
-public/streams/*
-!public/streams/.gitkeep
+app/public/streams/*
+!app/public/streams/.gitkeep
+docs/

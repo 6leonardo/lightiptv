@@ -1,62 +1,15 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPTV Viewer</title>
-    <link rel="stylesheet" href="styles.css">
-    
-</head>
-<body>
-    <div class="container">
-        <h1>IPTV Viewer (threadfin tester)</h1>
-        
-        <div class="filter-section">
-            <input type="text" id="searchInput" placeholder="🔍 Cerca canali...">
-        </div>
+let allChannels = [];
 
-        <div class="stats" id="stats"></div>
 
-        <div id="content">
-            <div class="loading">Caricamento canali...</div>
-        </div>
-    </div>
 
-    <!-- Video Overlay -->
-    <div class="video-overlay" id="videoOverlay">
-        <div class="video-container">
-            <button class="close-button" id="closeButton">×</button>
-            <div id="videoContent">
-                <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
-                    <div class="spinner"></div>
-                    <div class="loading-message">Preparazione stream...</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- EPG Overlay -->
-    <div class="epg-overlay" id="epgOverlay">
-        <div class="epg-modal">
-            <div class="epg-modal-header">
-                <div class="epg-modal-title" id="epgModalTitle">EPG</div>
-                <button class="epg-close-btn" id="epgCloseBtn">×</button>
-            </div>
-            <div class="epg-modal-content" id="epgModalContent">
-                <div class="loading">Caricamento...</div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script>
-        let allChannels = [];
         let currentSessionId = null;
         let heartbeatInterval = null;
         let epgData = null;
         let ffmpegLogVisible = false;
         let ffmpegLogElement = null;
         let currentChannel = null;
+        let epgOnlyMode = localStorage.getItem('epgOnlyMode') === 'true';
+        let previewsIndex = {};
 
         async function loadChannels() {
             try {
@@ -69,8 +22,15 @@
 
                 allChannels = data.channels;
                 
+                // Restore toggle state
+                const toggle = document.getElementById('epgOnlyToggle');
+                toggle.checked = epgOnlyMode;
+                
                 // Load EPG data in background
                 loadEPGBackground();
+                
+                // Load previews index
+                loadPreviewsIndex();
                 
                 displayChannels(allChannels);
                 updateStats(allChannels.length, allChannels.length);
@@ -92,6 +52,104 @@
                 return;
             }
 
+            // Filter channels with EPG if in EPG-only mode
+            let displayChannels = channels;
+            if (epgOnlyMode) {
+                displayChannels = channels.filter(ch => {
+                    return epgData && ch.tvgId && epgData.epgData[ch.tvgId] && epgData.epgData[ch.tvgId].length > 0;
+                });
+
+                // Sort by channel number (extract from id or name)
+                displayChannels.sort((a, b) => {
+                    const getNumber = (ch) => {
+                        const match = (ch.id || ch.name).match(/\d+/);
+                        return match ? parseInt(match[0]) : 9999;
+                    };
+                    return getNumber(a) - getNumber(b);
+                });
+            }
+
+            if (epgOnlyMode) {
+                // List view
+                displayListView(displayChannels);
+            } else {
+                // Grid view
+                displayGridView(displayChannels);
+            }
+        }
+
+        function displayListView(channels) {
+            const content = document.getElementById('content');
+            const list = document.createElement('div');
+            list.className = 'channels-list';
+
+            console.log('DisplayListView - previewsIndex keys:', Object.keys(previewsIndex).length);
+            
+            channels.forEach(channel => {
+                const item = document.createElement('div');
+                item.className = 'channel-list-item';
+
+                // Preview or logo element
+                let previewElement = '';
+                const hasPreview = previewsIndex[channel.tvgId] && previewsIndex[channel.tvgId].status === 'success';
+                
+                if (hasPreview) {
+                    const previewUrl = `/streams/previews/${channel.tvgId}.jpg`;
+                    previewElement = `<img src="${previewUrl}" alt="Preview" class="channel-list-preview">`;
+                } else if (channel.logo) {
+                    previewElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
+                } else {
+                    previewElement = `<div class="channel-list-logo placeholder">${channel.name.charAt(0).toUpperCase()}</div>`;
+                }
+
+                // Get current program only
+                const programs = epgData.epgData[channel.tvgId];
+                const now = new Date();
+                
+                let currentProgram = programs.find(p => {
+                    const start = new Date(p.start);
+                    const stop = new Date(p.stop);
+                    return now >= start && now <= stop;
+                });
+
+                // If no current program, don't show past programs
+                let timeStr = '';
+                let currentText = '';
+
+                if (currentProgram) {
+                    const start = new Date(currentProgram.start);
+                    const stop = new Date(currentProgram.stop);
+                    timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
+                    currentText = currentProgram.title;
+                }
+
+                item.innerHTML = `
+                    ${channel.isStreaming ? '<div class="streaming-indicator"></div>' : ''}
+                    ${previewElement}
+                    <div class="channel-list-info">
+                        <div class="channel-list-name">${channel.name}</div>
+                        ${currentText ? `
+                        <div class="channel-list-epg">
+                            <div class="channel-list-current">${currentText}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ${timeStr ? `<div class="channel-list-time">${timeStr}</div>` : ''}
+                `;
+
+                item.addEventListener('click', () => {
+                    startStream(channel);
+                });
+
+                list.appendChild(item);
+            });
+
+            content.innerHTML = '';
+            content.appendChild(list);
+        }
+
+        function displayGridView(channels) {
+            const content = document.getElementById('content');
             const grid = document.createElement('div');
             grid.className = 'channels-grid';
 
@@ -101,8 +159,7 @@
 
                 let logoElement;
                 if (channel.logo) {
-                    const proxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
-                    logoElement = `<img src="${proxyUrl}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
+                    logoElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
                 } else {
                     const initial = channel.name.charAt(0).toUpperCase();
                     logoElement = `<div class="channel-logo placeholder">${initial}</div>`;
@@ -140,14 +197,14 @@
                         const stop = new Date(currentProgram.stop);
                         const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}-${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
                         epgInfoHtml = `
-                            <div class="epg-info" onclick="event.stopPropagation(); showChannelEPG('${channel.tvgId}', '${channel.name.replace(/'/g, "\\'")}')">
+                            <div class="epg-info" onclick="event.stopPropagation(); showChannelEPG('${channel.tvgId}', '${channel.name.replace(/'/g, " \\'")}')"="">
                                 <div class="epg-info-time">${timeStr}</div>
                                 <div class="epg-info-title">${currentProgram.title}</div>
                             </div>
                         `;
                     } else {
                         epgInfoHtml = `
-                            <div class="no-epg-placeholder" onclick="event.stopPropagation(); showChannelEPG('${channel.tvgId}', '${channel.name.replace(/'/g, "\\'")}')">
+                            <div class="no-epg-placeholder" onclick="event.stopPropagation(); showChannelEPG('${channel.tvgId}', '${channel.name.replace(/'/g, " \\'")}')"="">
                                 📋 Visualizza EPG
                             </div>
                         `;
@@ -456,7 +513,7 @@
             videoContent.innerHTML = `
                 <div style="height: 100%; display: flex; flex-direction: column; background: #000;">
                     <div id="videoWrapper" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        <video id="videoPlayer" controls autoplay style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;"></video>
+                        <video id="videoPlayer" controls="" autoplay="" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;"></video>
                     </div>
                     <div style="color: white; padding: 15px; background: rgba(0,0,0,0.9);">
                         <h3 style="margin: 0;">${channel.name}</h3>
@@ -660,6 +717,18 @@
             }
         }
 
+        async function loadPreviewsIndex() {
+            try {
+                const response = await fetch('/api/previews-index');
+                if (response.ok) {
+                    previewsIndex = await response.json();
+                    console.log('Previews index loaded:', Object.keys(previewsIndex).length, 'channels');
+                }
+            } catch (error) {
+                console.log('No previews index available yet');
+            }
+        }
+
         // FFmpeg log management
         function updateFFmpegLog(command, output) {
             if (!ffmpegLogElement) {
@@ -722,8 +791,24 @@
             }
         });
 
+        // Toggle EPG-only mode
+        document.getElementById('epgOnlyToggle').addEventListener('change', (e) => {
+            epgOnlyMode = e.target.checked;
+            
+            // Save state to localStorage
+            localStorage.setItem('epgOnlyMode', epgOnlyMode);
+            
+            // Apply search filter
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = searchTerm ? 
+                allChannels.filter(ch => ch.name.toLowerCase().includes(searchTerm)) : 
+                allChannels;
+            
+            displayChannels(filtered);
+            updateStats(filtered.length, allChannels.length);
+        });
+
         // Load channels on page load
         loadChannels();
-    </script>
-</body>
-</html>
+    
+

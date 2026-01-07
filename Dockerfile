@@ -15,11 +15,11 @@ RUN npm ci --only=production
 
 # Copy application files
 COPY server.js ./
-COPY public ./public
+COPY app ./app
 COPY .env.sample ./.env
 
 # Create streams directory
-RUN mkdir -p public/streams
+RUN mkdir -p app/public/streams
 
 # Expose port
 EXPOSE 3005

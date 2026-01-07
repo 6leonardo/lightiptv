@@ -58,7 +58,7 @@ services:
       - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
       - PORT=3005
     volumes:
-      - ./lightiptv/streams:/app/public/streams
+      - ./lightiptv/streams:/app/app/public/streams
     networks:
       - tvstack
     depends_on:
@@ -93,7 +93,7 @@ environment:
 
 ### Volumes
 
-- **`./lightiptv/streams:/app/public/streams`**: External directory for HLS stream segments (avoids writing to container image)
+- **`./lightiptv/streams:/app/app/public/streams`**: External directory for HLS stream segments (avoids writing to container image)
 
 ## 🚀 Getting Started
 
