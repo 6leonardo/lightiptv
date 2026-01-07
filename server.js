@@ -10,6 +10,9 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 const THREADFIN_M3U_URL = process.env.THREADFIN_M3U_URL || process.env.M3U_URL;
 const THREADFIN_XMLTV_URL = process.env.THREADFIN_XMLTV_URL || process.env.XMLTV_URL;
+const PREVIEWS_ENABLED = process.env.PREVIEWS_ENABLED === 'true';
+const PREVIEWS_EPG_ONLY = process.env.PREVIEWS_EPG_ONLY !== 'false'; // Default true
+const PREVIEWS_EXCLUDE = process.env.PREVIEWS_EXCLUDE ? process.env.PREVIEWS_EXCLUDE.split(',').map(s => s.trim()) : [];
 
 app.use(express.static('public'));
 app.use(express.json());
@@ -22,6 +25,44 @@ let epgCache = null;
 let epgLastFetch = null;
 const EPG_CACHE_DURATION = 3600000; // 1 hour
 
+// Preview screenshot management
+const previewsDir = path.join(__dirname, 'public', 'streams', 'previews');
+const previewsIndexPath = path.join(previewsDir, 'index.json');
+let previewsIndex = {};
+let previewQueue = [];
+let isCapturingPreview = false;
+let previewCheckInterval = null;
+
+// Initialize previews directory and index
+async function initPreviews() {
+  if (!PREVIEWS_ENABLED) return;
+  
+  try {
+    await fs.mkdir(previewsDir, { recursive: true });
+    
+    // Load existing index
+    try {
+      const indexData = await fs.readFile(previewsIndexPath, 'utf8');
+      previewsIndex = JSON.parse(indexData);
+    } catch (err) {
+      previewsIndex = {};
+    }
+    
+    console.log('Preview system initialized');
+  } catch (error) {
+    console.error('Error initializing previews:', error.message);
+  }
+}
+
+// Save previews index
+async function savePreviewsIndex() {
+  try {
+    await fs.writeFile(previewsIndexPath, JSON.stringify(previewsIndex, null, 2));
+  } catch (error) {
+    console.error('Error saving previews index:', error.message);
+  }
+}
+
 // Cleanup interval check (every 30 seconds)
 setInterval(() => {
   const now = Date.now();
@@ -32,6 +73,11 @@ setInterval(() => {
       cleanupStream(sessionId);
     }
   });
+  
+  // Trigger preview check when no streams are active
+  if (PREVIEWS_ENABLED && activeStreams.size === 0 && !isCapturingPreview) {
+    checkAndCapturePreview();
+  }
 }, 30000);
 
 // Parse M3U playlist
@@ -454,6 +500,135 @@ app.post('/api/stream/heartbeat/:sessionId', (req, res) => {
   }
 });
 
+// Check and capture preview screenshots
+async function checkAndCapturePreview() {
+  if (!PREVIEWS_ENABLED || isCapturingPreview || activeStreams.size > 0) return;
+  
+  try {
+    const epgData = await getEPGData();
+    if (!epgData || !epgData.epgData) return;
+    
+    const response = await axios.get(THREADFIN_M3U_URL);
+    const channels = parseM3U(response.data);
+    
+    const now = new Date();
+    const candidates = [];
+    
+    // Find channels with EPG that need preview update
+    for (const channel of channels) {
+      if (!channel.tvgId || PREVIEWS_EXCLUDE.includes(channel.tvgId)) continue;
+      
+      const programs = epgData.epgData[channel.tvgId];
+      
+      // Skip if PREVIEWS_EPG_ONLY is true and no EPG data
+      if (PREVIEWS_EPG_ONLY && (!programs || programs.length === 0)) continue;
+      
+      // If we have EPG, check for current program
+      let currentProgram = null;
+      if (programs && programs.length > 0) {
+        currentProgram = programs.find(p => {
+          const start = new Date(p.start);
+          const stop = new Date(p.stop);
+          return now >= start && now <= stop;
+        });
+        
+        if (!currentProgram) continue;
+        
+        const programStart = new Date(currentProgram.start);
+        const timeSinceProgramStart = now - programStart;
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        // Check if program started at least 5 minutes ago
+        if (timeSinceProgramStart < fiveMinutes) continue;
+        
+        // Check if we already have a preview for this program
+        const previewKey = `${channel.tvgId}_${currentProgram.start}`;
+        if (previewsIndex[channel.tvgId] === previewKey) continue;
+        
+        candidates.push({
+          channel,
+          program: currentProgram,
+          previewKey
+        });
+      } else if (!PREVIEWS_EPG_ONLY) {
+        // No EPG but PREVIEWS_EPG_ONLY is false - capture anyway
+        const previewKey = `${channel.tvgId}_${Math.floor(now / 3600000)}`; // Hourly key
+        if (previewsIndex[channel.tvgId] === previewKey) continue;
+        
+        candidates.push({
+          channel,
+          program: null,
+          previewKey
+        });
+      }
+    }
+    
+    // Process one candidate at a time
+    if (candidates.length > 0) {
+      const candidate = candidates[0];
+      await capturePreview(candidate.channel, candidate.program, candidate.previewKey);
+    }
+  } catch (error) {
+    console.error('Error checking previews:', error.message);
+  }
+}
+
+// Capture a single preview screenshot
+async function capturePreview(channel, program, previewKey) {
+  isCapturingPreview = true;
+  
+  try {
+    const programInfo = program ? `${channel.name} - ${program.title}` : channel.name;
+    console.log(`Capturing preview for ${programInfo}`);
+    
+    const previewFile = path.join(previewsDir, `${channel.tvgId}.jpg`);
+    
+    // Use FFmpeg to capture one frame
+    const ffmpegArgs = [
+      '-i', channel.stream,
+      '-vframes', '1',
+      '-q:v', '2',
+      '-y',
+      previewFile
+    ];
+    
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let errorOutput = '';
+      ffmpeg.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          console.log(`Preview captured: ${channel.tvgId}`);
+          resolve();
+        } else {
+          console.error(`FFmpeg error for ${channel.tvgId}:`, errorOutput.slice(-500));
+          reject(new Error(`FFmpeg exited with code ${code}`));
+        }
+      });
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        ffmpeg.kill('SIGKILL');
+        reject(new Error('Preview capture timeout'));
+      }, 30000);
+    });
+    
+    // Update index
+    previewsIndex[channel.tvgId] = previewKey;
+    await savePreviewsIndex();
+    
+  } catch (error) {
+    console.error(`Error capturing preview for ${channel.name}:`, error.message);
+  } finally {
+    isCapturingPreview = false;
+  }
+}
+
+
 // EPG endpoint
 app.get('/api/epg', async (req, res) => {
   try {
@@ -469,9 +644,15 @@ app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Threadfin M3U URL: ${THREADFIN_M3U_URL}`);
   console.log(`Threadfin XMLTV URL: ${THREADFIN_XMLTV_URL}`);
+  console.log(`Previews enabled: ${PREVIEWS_ENABLED}`);
   
   // Pre-load EPG data on startup
   console.log('Loading EPG data...');
   await getEPGData();
   console.log('EPG data loaded');
+  
+  // Initialize preview system
+  if (PREVIEWS_ENABLED) {
+    await initPreviews();
+  }
 });

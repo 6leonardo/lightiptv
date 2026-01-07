@@ -14,7 +14,9 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # Copy application files
-COPY . .
+COPY server.js ./
+COPY public ./public
+COPY .env.sample ./.env
 
 # Create streams directory
 RUN mkdir -p public/streams
