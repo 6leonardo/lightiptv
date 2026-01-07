@@ -1,6 +1,6 @@
+let allChannels = [];
 
-
-
+document.addEventListener('DOMContentLoaded', () => {
         let currentSessionId = null;
         let heartbeatInterval = null;
         let epgData = null;
@@ -54,13 +54,13 @@
             // Filter channels with EPG if in EPG-only mode
             let displayChannels = channels;
             if (epgOnlyMode) {
-                displayChannels = channels.filter(ch =&gt; {
-                    return epgData &amp;&amp; ch.tvgId &amp;&amp; epgData.epgData[ch.tvgId] &amp;&amp; epgData.epgData[ch.tvgId].length &gt; 0;
+                displayChannels = channels.filter(ch => {
+                    return epgData && ch.tvgId && epgData.epgData[ch.tvgId] && epgData.epgData[ch.tvgId].length > 0;
                 });
 
                 // Sort by channel number (extract from id or name)
-                displayChannels.sort((a, b) =&gt; {
-                    const getNumber = (ch) =&gt; {
+                displayChannels.sort((a, b) => {
+                    const getNumber = (ch) => {
                         const match = (ch.id || ch.name).match(/\d+/);
                         return match ? parseInt(match[0]) : 9999;
                     };
@@ -84,19 +84,20 @@
 
             console.log('DisplayListView - previewsIndex keys:', Object.keys(previewsIndex).length);
             
-            channels.forEach(channel =&gt; {
+            channels.forEach(channel => {
                 const item = document.createElement('div');
                 item.className = 'channel-list-item';
 
                 // Preview or logo element
                 let previewElement = '';
-                const hasPreview = previewsIndex[channel.tvgId] &amp;&amp; previewsIndex[channel.tvgId].status === 'success';
+                const hasPreview = previewsIndex[channel.tvgId] && previewsIndex[channel.tvgId].status === 'success';
                 
                 if (hasPreview) {
                     const previewUrl = `/streams/previews/${channel.tvgId}.jpg`;
                     previewElement = `<img src="${previewUrl}" alt="Preview" class="channel-list-preview">`;
                 } else if (channel.logo) {
-                    previewElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='&lt;div class=\\'channel-list-logo placeholder\\'&gt;${channel.name.charAt(0).toUpperCase()}&lt;/div&gt;';">`;
+                    const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
+                    previewElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
                 } else {
                     previewElement = `<div class="channel-list-logo placeholder">${channel.name.charAt(0).toUpperCase()}</div>`;
                 }
@@ -105,10 +106,10 @@
                 const programs = epgData.epgData[channel.tvgId];
                 const now = new Date();
                 
-                let currentProgram = programs.find(p =&gt; {
+                let currentProgram = programs.find(p => {
                     const start = new Date(p.start);
                     const stop = new Date(p.stop);
-                    return now &gt;= start &amp;&amp; now &lt;= stop;
+                    return now >= start && now <= stop;
                 });
 
                 // If no current program, don't show past programs
@@ -136,7 +137,7 @@
                     ${timeStr ? `<div class="channel-list-time">${timeStr}</div>` : ''}
                 `;
 
-                item.addEventListener('click', () =&gt; {
+                item.addEventListener('click', () => {
                     startStream(channel);
                 });
 
@@ -152,13 +153,14 @@
             const grid = document.createElement('div');
             grid.className = 'channels-grid';
 
-            channels.forEach(channel =&gt; {
+            channels.forEach(channel => {
                 const card = document.createElement('div');
                 card.className = 'channel-card';
 
                 let logoElement;
                 if (channel.logo) {
-                    logoElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '&lt;div class=\\'channel-name\\'&gt;${channel.name}&lt;/div&gt;')">`;
+                    const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
+                    logoElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
                 } else {
                     const initial = channel.name.charAt(0).toUpperCase();
                     logoElement = `<div class="channel-logo placeholder">${initial}</div>`;
@@ -166,7 +168,7 @@
 
                 // Get current program
                 let epgInfoHtml = '';
-                const hasEPG = epgData &amp;&amp; channel.tvgId &amp;&amp; epgData.epgData[channel.tvgId];
+                const hasEPG = epgData && channel.tvgId && epgData.epgData[channel.tvgId];
                 
                 if (hasEPG) {
                     const now = new Date();
@@ -177,17 +179,17 @@
                     const programs = epgData.epgData[channel.tvgId];
                     
                     // Find current program only from today
-                    let currentProgram = programs.find(p =&gt; {
+                    let currentProgram = programs.find(p => {
                         const start = new Date(p.start);
                         const stop = new Date(p.stop);
-                        return start &gt;= today &amp;&amp; start &lt; tomorrow &amp;&amp; now &gt;= start &amp;&amp; now &lt;= stop;
+                        return start >= today && start < tomorrow && now >= start && now <= stop;
                     });
                     
                     // If no current program, show next upcoming program
                     if (!currentProgram) {
-                        currentProgram = programs.find(p =&gt; {
+                        currentProgram = programs.find(p => {
                             const start = new Date(p.start);
-                            return start &gt; now;
+                            return start > now;
                         });
                     }
 
@@ -218,8 +220,8 @@
                 `;
 
                 // Click on card (but not on EPG area) = play
-                card.addEventListener('click', (e) =&gt; {
-                    if (!e.target.closest('.epg-info') &amp;&amp; !e.target.closest('.no-epg-placeholder')) {
+                card.addEventListener('click', (e) => {
+                    if (!e.target.closest('.epg-info') && !e.target.closest('.no-epg-placeholder')) {
                         startStream(channel);
                     }
                 });
@@ -248,12 +250,12 @@
 
             // Group programs by date
             const programsByDate = {};
-            programs.forEach(program =&gt; {
+            programs.forEach(program => {
                 const startTime = new Date(program.start);
                 const endTime = new Date(program.stop);
                 
                 // Skip past programs
-                if (now &gt; endTime) {
+                if (now > endTime) {
                     return;
                 }
                 
@@ -268,7 +270,7 @@
             let html = '';
             const sortedDates = Object.keys(programsByDate).sort();
             
-            sortedDates.forEach(dateKey =&gt; {
+            sortedDates.forEach(dateKey => {
                 const date = new Date(dateKey);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
@@ -286,12 +288,12 @@
                 
                 html += `<div style="background: #2a2a2a; padding: 10px; margin: 15px 0 10px 0; border-radius: 5px; font-weight: bold; color: #4caf50;">${dateHeader}</div>`;
                 
-                programsByDate[dateKey].forEach(program =&gt; {
+                programsByDate[dateKey].forEach(program => {
                     const startTime = new Date(program.start);
                     const endTime = new Date(program.stop);
                     
                     let programClass = 'epg-program';
-                    if (now &gt;= startTime &amp;&amp; now &lt;= endTime) {
+                    if (now >= startTime && now <= endTime) {
                         programClass += ' current';
                     }
 
@@ -389,7 +391,7 @@
             let attempts = 0;
             const videoContent = document.getElementById('videoContent');
 
-            const checkStatus = async () =&gt; {
+            const checkStatus = async () => {
                 try {
                     const response = await fetch(`/api/stream/status/${sessionId}`);
                     const status = await response.json();
@@ -425,7 +427,7 @@
                     }
 
                     attempts++;
-                    if (attempts &gt;= maxAttempts) {
+                    if (attempts >= maxAttempts) {
                         throw new Error('Timeout: stream non pronto');
                     }
 
@@ -450,20 +452,20 @@
             
             // Build EPG content if available
             let epgHtml = '';
-            if (epgData &amp;&amp; channel.tvgId &amp;&amp; epgData.epgData[channel.tvgId]) {
+            if (epgData && channel.tvgId && epgData.epgData[channel.tvgId]) {
                 const now = new Date();
                 const programs = epgData.epgData[channel.tvgId];
                 
                 // Get current and next programs
-                const currentProgram = programs.find(p =&gt; {
+                const currentProgram = programs.find(p => {
                     const start = new Date(p.start);
                     const stop = new Date(p.stop);
-                    return now &gt;= start &amp;&amp; now &lt;= stop;
+                    return now >= start && now <= stop;
                 });
                 
-                const futurePrograms = programs.filter(p =&gt; {
+                const futurePrograms = programs.filter(p => {
                     const start = new Date(p.start);
-                    return start &gt; now;
+                    return start > now;
                 }).slice(0, 5);
                 
                 epgHtml = '<div style="padding: 20px; overflow-y: auto; max-height: 100%;">';
@@ -487,9 +489,9 @@
                     epgHtml += '</div>';
                 }
                 
-                if (futurePrograms.length &gt; 0) {
+                if (futurePrograms.length > 0) {
                     epgHtml += '<div style="color: #888; font-weight: bold; font-size: 0.85em; margin-bottom: 10px; margin-top: 20px;">UP NEXT</div>';
-                    futurePrograms.forEach(program =&gt; {
+                    futurePrograms.forEach(program => {
                         const start = new Date(program.start);
                         const stop = new Date(program.stop);
                         const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
@@ -550,13 +552,13 @@
 
             // Resize video to max dimensions when metadata is loaded
             function resizeVideo() {
-                if (video.videoWidth &amp;&amp; video.videoHeight) {
+                if (video.videoWidth && video.videoHeight) {
                     const videoRatio = video.videoWidth / video.videoHeight;
                     const wrapperWidth = videoWrapper.clientWidth;
                     const wrapperHeight = videoWrapper.clientHeight;
                     const wrapperRatio = wrapperWidth / wrapperHeight;
                     
-                    if (videoRatio &gt; wrapperRatio) {
+                    if (videoRatio > wrapperRatio) {
                         // Video is wider - fit to width
                         video.style.width = '100%';
                         video.style.height = 'auto';
@@ -582,11 +584,11 @@
                 hls.loadSource(m3u8Url);
                 hls.attachMedia(video);
                 
-                hls.on(Hls.Events.MANIFEST_PARSED, () =&gt; {
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     video.play();
                 });
 
-                hls.on(Hls.Events.ERROR, (event, data) =&gt; {
+                hls.on(Hls.Events.ERROR, (event, data) => {
                     console.error('HLS error:', data);
                     if (data.fatal) {
                         switch(data.type) {
@@ -608,7 +610,7 @@
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 // Native HLS support (Safari)
                 video.src = m3u8Url;
-                video.addEventListener('loadedmetadata', () =&gt; {
+                video.addEventListener('loadedmetadata', () => {
                     video.play();
                 });
             }
@@ -622,11 +624,11 @@
                 clearInterval(heartbeatInterval);
             }
 
-            heartbeatInterval = setInterval(() =&gt; {
+            heartbeatInterval = setInterval(() => {
                 if (currentSessionId) {
                     fetch(`/api/stream/heartbeat/${currentSessionId}`, {
                         method: 'POST'
-                    }).catch(err =&gt; console.error('Heartbeat error:', err));
+                    }).catch(err => console.error('Heartbeat error:', err));
                 }
             }, 10000); // Every 10 seconds
         }
@@ -643,6 +645,11 @@
                 sidebar.style.transform = 'translateX(0%)';
                 toggle.style.right = '350px';
             }
+            
+            // Trigger window resize event after sidebar animation to adjust video
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 350);
         }
 
         function stopStream() {
@@ -663,7 +670,7 @@
 
             // Destroy HLS instance
             const video = document.getElementById('videoPlayer');
-            if (video &amp;&amp; video.hlsInstance) {
+            if (video && video.hlsInstance) {
                 video.hlsInstance.destroy();
             }
 
@@ -671,7 +678,7 @@
             if (currentSessionId) {
                 fetch(`/api/stream/stop/${currentSessionId}`, {
                     method: 'POST'
-                }).catch(err =&gt; console.error('Error stopping stream:', err));
+                }).catch(err => console.error('Error stopping stream:', err));
                 
                 currentSessionId = null;
             }
@@ -680,19 +687,15 @@
             document.getElementById('videoOverlay').classList.remove('active');
         }
 
-        // Close button handlers
-        document.getElementById('closeButton').addEventListener('click', stopStream);
-        document.getElementById('epgCloseBtn').addEventListener('click', closeEPGOverlay);
-
         function updateStats(displayed, total) {
             const stats = document.getElementById('stats');
             stats.textContent = `Visualizzati ${displayed} di ${total} canali`;
         }
 
         // Search functionality
-        document.getElementById('searchInput').addEventListener('input', (e) =&gt; {
+        document.getElementById('searchInput').addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
-            const filtered = allChannels.filter(channel =&gt; 
+            const filtered = allChannels.filter(channel => 
                 channel.name.toLowerCase().includes(searchTerm) ||
                 channel.group.toLowerCase().includes(searchTerm)
             );
@@ -735,7 +738,7 @@
             }
             
             const fullText = `$ ${command}\n\n${output.join('\n')}`;
-            const truncated = fullText.length &gt; 5000 ? fullText.slice(-5000) : fullText;
+            const truncated = fullText.length > 5000 ? fullText.slice(-5000) : fullText;
             
             ffmpegLogElement.textContent = truncated;
             
@@ -783,7 +786,7 @@
         }
         
         // Keyboard shortcut: H to toggle FFmpeg log
-        window.addEventListener('keydown', (e) =&gt; {
+        window.addEventListener('keydown', (e) => {
             if (e.key === 'h' || e.key === 'H') {
                 e.preventDefault();
                 toggleFFmpegLog();
@@ -791,7 +794,7 @@
         });
 
         // Toggle EPG-only mode
-        document.getElementById('epgOnlyToggle').addEventListener('change', (e) =&gt; {
+        document.getElementById('epgOnlyToggle').addEventListener('change', (e) => {
             epgOnlyMode = e.target.checked;
             
             // Save state to localStorage
@@ -807,7 +810,10 @@
             updateStats(filtered.length, allChannels.length);
         });
 
-        // Load channels on page load
-        loadChannels();
-    
+    // Close button handlers
+    document.getElementById('closeButton').addEventListener('click', stopStream);
+    document.getElementById('epgCloseBtn').addEventListener('click', closeEPGOverlay);
 
+    // Load channels on page load
+    loadChannels();
+});

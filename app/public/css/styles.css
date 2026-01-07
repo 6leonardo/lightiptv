@@ -299,8 +299,8 @@
 
         .video-container {
             position: relative;
-            width: 90%;
-            max-width: 1200px;
+            width: calc(100% - 40px);
+            height: calc(100% - 40px);
             background: black;
             border-radius: 8px;
             overflow: hidden;
