@@ -1,0 +1,20 @@
+services:
+  iptv-viewer:
+    image: astevani/lightiptv:latest
+    build: .
+    container_name: iptv-viewer
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
+      - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
+      - PORT=3005
+    volumes:
+      - ./streams:/app/public/streams
+    networks:
+      - iptv-network
+
+networks:
+  iptv-network:
+    driver: bridge

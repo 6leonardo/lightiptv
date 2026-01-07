@@ -1,0 +1,122 @@
+# LightIPTV - Web IPTV Viewer
+
+A lightweight web IPTV viewer designed to work in cascade with **Threadfin**, perfect for testing playlists or light browser-based viewing.
+
+## ⚠️ Important Note
+
+**This is not a full-featured IPTV client** but rather a testing/light viewing tool. It uses minimal infrastructure to stream IPTV channels via web browser. Ideal for debugging, quick tests, or occasional use.
+
+## 🔧 Requirements: Threadfin
+
+LightIPTV works **in cascade with Threadfin**, which handles:
+- Managing the original M3U playlist
+- Buffering streams (recommended: 0.5MB in Threadfin)
+- Providing EPG via XMLTV with associated channels
+
+**Threadfin tested and working** with these settings.
+
+## 🐳 Docker Hub
+
+Image available on Docker Hub: **`astevani/lightiptv:latest`** (amd64)
+
+## 📦 Complete Setup with Threadfin
+
+### docker-compose.yml
+
+```yaml
+networks:
+  tvstack:
+    driver: bridge
+
+services:
+  threadfin:
+    image: fyb3roptik/threadfin
+    container_name: threadfin
+    hostname: threadfin
+    restart: unless-stopped
+    ports:
+      - "34400:34400"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Rome
+    volumes:
+      - ./threadfin/conf:/home/threadfin/conf
+      - ./threadfin/temp:/tmp/threadfin:rw
+    networks:
+      - tvstack
+
+  lightiptv:
+    image: astevani/lightiptv:latest
+    container_name: lightiptv
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      # Internal URLs to Threadfin (same Docker network)
+      - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
+      - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
+      - PORT=3005
+    volumes:
+      - ./lightiptv/streams:/app/public/streams
+    networks:
+      - tvstack
+    depends_on:
+      - threadfin
+```
+
+### Environment Variables
+
+- **`THREADFIN_M3U_URL`**: URL of Threadfin's M3U playlist (can be internal Docker URL)
+- **`THREADFIN_XMLTV_URL`**: URL of Threadfin's XMLTV EPG (can be internal Docker URL)
+- **`PORT`**: LightIPTV server port (default: 3005)
+
+### Volumes
+
+- **`./lightiptv/streams:/app/public/streams`**: External directory for HLS stream segments (avoids writing to container image)
+
+## 🚀 Getting Started
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f lightiptv
+
+# Stop
+docker-compose down
+```
+
+## 🌐 Access
+
+Open browser: `http://localhost:3005`
+
+## 🔍 Debug with H key
+
+Press **`H`** key to show/hide real-time FFmpeg log.
+
+**Log utility:**
+- View executed FFmpeg command
+- Monitor bitrate, frame rate, encoding speed
+- Diagnose stream connection issues
+- Verify network errors or unsupported codecs
+
+The log updates in real-time during stream preparation and remains available during playback.
+
+## 📝 Technical Notes
+
+- **Base image**: `node:20-alpine` (~150MB final with FFmpeg)
+- **FFmpeg**: HLS transcoding with 10-second segments
+- **Stream sharing**: Reuses same FFmpeg process for identical URLs
+- **Auto-cleanup**: Inactive streams terminated after 60 seconds
+- **EPG cache**: 1-hour cache duration to reduce Threadfin calls
+
+## 🎯 Recommended Use Cases
+
+- Quick IPTV playlist testing
+- Debugging problematic streams (with FFmpeg log)
+- Occasional browser viewing
+- Development/staging environment
+
+**Not recommended for:** heavy usage, production with many simultaneous users, 24/7 streaming.
