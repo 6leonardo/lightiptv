@@ -149,6 +149,29 @@ function parseXMLTVTime(timeStr) {
   const minute = timeStr.substr(10, 2);
   const second = timeStr.substr(12, 2);
   
+  // Parse timezone offset (e.g., +0100)
+  const tzMatch = timeStr.match(/([+-]\d{4})$/);
+  if (tzMatch) {
+    const tzOffset = tzMatch[1];
+    const tzSign = tzOffset[0];
+    const tzHours = parseInt(tzOffset.substr(1, 2));
+    const tzMinutes = parseInt(tzOffset.substr(3, 2));
+    
+    // Create date in UTC and adjust for timezone
+    const utcDate = new Date(Date.UTC(
+      parseInt(year), 
+      parseInt(month) - 1, 
+      parseInt(day), 
+      parseInt(hour), 
+      parseInt(minute), 
+      parseInt(second)
+    ));
+    
+    // Adjust for timezone offset to get local time
+    const offsetMs = (tzSign === '+' ? -1 : 1) * ((tzHours * 60 + tzMinutes) * 60000);
+    return new Date(utcDate.getTime() + offsetMs);
+  }
+  
   return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
 }
 

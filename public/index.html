@@ -56,6 +56,7 @@
         let epgData = null;
         let ffmpegLogVisible = false;
         let ffmpegLogElement = null;
+        let currentChannel = null;
 
         async function loadChannels() {
             try {
@@ -113,12 +114,26 @@
                 
                 if (hasEPG) {
                     const now = new Date();
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const tomorrow = new Date(today);
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    
                     const programs = epgData.epgData[channel.tvgId];
-                    const currentProgram = programs.find(p => {
+                    
+                    // Find current program only from today
+                    let currentProgram = programs.find(p => {
                         const start = new Date(p.start);
                         const stop = new Date(p.stop);
-                        return now >= start && now <= stop;
+                        return start >= today && start < tomorrow && now >= start && now <= stop;
                     });
+                    
+                    // If no current program, show next upcoming program
+                    if (!currentProgram) {
+                        currentProgram = programs.find(p => {
+                            const start = new Date(p.start);
+                            return start > now;
+                        });
+                    }
 
                     if (currentProgram) {
                         const start = new Date(currentProgram.start);
@@ -175,36 +190,71 @@
             const programs = epgData.epgData[tvgId];
             const now = new Date();
 
-            let html = '';
+            // Group programs by date
+            const programsByDate = {};
             programs.forEach(program => {
                 const startTime = new Date(program.start);
                 const endTime = new Date(program.stop);
                 
-                // Skip past programs - show only current and future
+                // Skip past programs
                 if (now > endTime) {
                     return;
                 }
                 
-                let programClass = 'epg-program';
-                if (now >= startTime && now <= endTime) {
-                    programClass += ' current';
+                // Get date key (YYYY-MM-DD)
+                const dateKey = startTime.toISOString().split('T')[0];
+                if (!programsByDate[dateKey]) {
+                    programsByDate[dateKey] = [];
                 }
+                programsByDate[dateKey].push(program);
+            });
 
-                const timeStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')} - ${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
-
-                html += `<div class="${programClass}">`;
-                html += `<div class="epg-time">${timeStr}</div>`;
-                html += `<div class="epg-title">${program.title || 'Nessun titolo'}</div>`;
-                if (program.desc) {
-                    html += `<div class="epg-desc">${program.desc}</div>`;
+            let html = '';
+            const sortedDates = Object.keys(programsByDate).sort();
+            
+            sortedDates.forEach(dateKey => {
+                const date = new Date(dateKey);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const dateObj = new Date(date);
+                dateObj.setHours(0, 0, 0, 0);
+                
+                // Format date header
+                let dateHeader = '';
+                if (dateObj.getTime() === today.getTime()) {
+                    dateHeader = 'Today';
+                } else {
+                    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                    dateHeader = date.toLocaleDateString('en-US', options);
                 }
-                if (program.category) {
-                    const cat = String(program.category).trim();
-                    if (cat) {
-                        html += `<span class="epg-category">${cat}</span>`;
+                
+                html += `<div style="background: #2a2a2a; padding: 10px; margin: 15px 0 10px 0; border-radius: 5px; font-weight: bold; color: #4caf50;">${dateHeader}</div>`;
+                
+                programsByDate[dateKey].forEach(program => {
+                    const startTime = new Date(program.start);
+                    const endTime = new Date(program.stop);
+                    
+                    let programClass = 'epg-program';
+                    if (now >= startTime && now <= endTime) {
+                        programClass += ' current';
                     }
-                }
-                html += `</div>`;
+
+                    const timeStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')} - ${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
+
+                    html += `<div class="${programClass}">`;
+                    html += `<div class="epg-time">${timeStr}</div>`;
+                    html += `<div class="epg-title">${program.title || 'Nessun titolo'}</div>`;
+                    if (program.desc) {
+                        html += `<div class="epg-desc">${program.desc}</div>`;
+                    }
+                    if (program.category) {
+                        const cat = String(program.category).trim();
+                        if (cat) {
+                            html += `<span class="epg-category">${cat}</span>`;
+                        }
+                    }
+                    html += `</div>`;
+                });
             });
 
             modalContent.innerHTML = html;
@@ -216,6 +266,9 @@
         }
 
         async function startStream(channel) {
+            // Store current channel
+            currentChannel = channel;
+            
             // Show overlay with spinner
             const overlay = document.getElementById('videoOverlay');
             const videoContent = document.getElementById('videoContent');
@@ -295,7 +348,7 @@
 
                     if (status.ready) {
                         // Stream is ready, keep FFmpeg log visible and load video player
-                        loadVideoPlayer(m3u8Url, channelName);
+                        loadVideoPlayer(m3u8Url, currentChannel);
                         return true;
                     } else if (status.error) {
                         throw new Error(status.error);
@@ -322,17 +375,132 @@
             checkStatus();
         }
 
-        function loadVideoPlayer(m3u8Url, channelName) {
+        function loadVideoPlayer(m3u8Url, channel) {
             const videoContent = document.getElementById('videoContent');
             
+            // Build EPG content if available
+            let epgHtml = '';
+            if (epgData && channel.tvgId && epgData.epgData[channel.tvgId]) {
+                const now = new Date();
+                const programs = epgData.epgData[channel.tvgId];
+                
+                // Get current and next programs
+                const currentProgram = programs.find(p => {
+                    const start = new Date(p.start);
+                    const stop = new Date(p.stop);
+                    return now >= start && now <= stop;
+                });
+                
+                const futurePrograms = programs.filter(p => {
+                    const start = new Date(p.start);
+                    return start > now;
+                }).slice(0, 5);
+                
+                epgHtml = '<div style="padding: 20px; overflow-y: auto; max-height: 100%;">';
+                epgHtml += '<h3 style="color: #4caf50; margin-top: 0;">Program Guide</h3>';
+                
+                if (currentProgram) {
+                    const start = new Date(currentProgram.start);
+                    const stop = new Date(currentProgram.stop);
+                    const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
+                    
+                    epgHtml += '<div style="background: rgba(76, 175, 80, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">';
+                    epgHtml += '<div style="color: #4caf50; font-weight: bold; font-size: 0.85em; margin-bottom: 5px;">NOW PLAYING</div>';
+                    epgHtml += `<div style="font-weight: bold; margin-bottom: 5px;">${currentProgram.title}</div>`;
+                    epgHtml += `<div style="color: #aaa; font-size: 0.9em;">${timeStr}</div>`;
+                    if (currentProgram.desc) {
+                        epgHtml += `<div style="margin-top: 8px; font-size: 0.9em; color: #ccc;">${currentProgram.desc}</div>`;
+                    }
+                    if (currentProgram.category) {
+                        epgHtml += `<div style="margin-top: 8px;"><span style="background: rgba(76, 175, 80, 0.3); padding: 4px 8px; border-radius: 4px; font-size: 0.8em;">${currentProgram.category}</span></div>`;
+                    }
+                    epgHtml += '</div>';
+                }
+                
+                if (futurePrograms.length > 0) {
+                    epgHtml += '<div style="color: #888; font-weight: bold; font-size: 0.85em; margin-bottom: 10px; margin-top: 20px;">UP NEXT</div>';
+                    futurePrograms.forEach(program => {
+                        const start = new Date(program.start);
+                        const stop = new Date(program.stop);
+                        const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
+                        
+                        epgHtml += '<div style="padding: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.05); border-radius: 6px;">';
+                        epgHtml += `<div style="font-weight: 500; margin-bottom: 3px;">${program.title}</div>`;
+                        epgHtml += `<div style="color: #888; font-size: 0.85em;">${timeStr}</div>`;
+                        if (program.category) {
+                            epgHtml += `<div style="margin-top: 5px;"><span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 3px; font-size: 0.75em; color: #aaa;">${program.category}</span></div>`;
+                        }
+                        epgHtml += '</div>';
+                    });
+                }
+                
+                epgHtml += '</div>';
+            } else {
+                epgHtml = '<div style="padding: 20px; color: #888; text-align: center;"><p>No EPG data available</p></div>';
+            }
+            
             videoContent.innerHTML = `
-                <video id="videoPlayer" class="video-player" controls autoplay></video>
-                <div style="color: white; padding: 15px; background: rgba(0,0,0,0.8);">
-                    <h3>${channelName}</h3>
+                <div style="height: 100%; display: flex; flex-direction: column; background: #000;">
+                    <div id="videoWrapper" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <video id="videoPlayer" controls autoplay style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;"></video>
+                    </div>
+                    <div style="color: white; padding: 15px; background: rgba(0,0,0,0.9);">
+                        <h3 style="margin: 0;">${channel.name}</h3>
+                    </div>
                 </div>
             `;
+            
+            // Add EPG sidebar and toggle to overlay (outside video container)
+            const overlay = document.getElementById('videoOverlay');
+            
+            // Remove existing EPG elements if any
+            const existingSidebar = document.getElementById('epgSidebar');
+            const existingToggle = document.getElementById('epgToggle');
+            if (existingSidebar) existingSidebar.remove();
+            if (existingToggle) existingToggle.remove();
+            
+            // Create EPG sidebar
+            const epgSidebar = document.createElement('div');
+            epgSidebar.id = 'epgSidebar';
+            epgSidebar.style.cssText = 'position: fixed; right: 0; top: 0; bottom: 0; width: 350px; background: rgba(0,0,0,0.95); color: white; transform: translateX(100%); transition: transform 0.3s ease; z-index: 10001; overflow-y: auto;';
+            epgSidebar.innerHTML = `${epgHtml}`;
+            
+            // Create EPG toggle tab
+            const epgToggle = document.createElement('div');
+            epgToggle.id = 'epgToggle';
+            epgToggle.onclick = toggleEPGSidebar;
+            epgToggle.style.cssText = 'position: fixed; right: 0; top: 50%; transform: translateY(-50%); background: rgba(76, 175, 80, 0.9); color: white; padding: 30px 8px; cursor: pointer; border-radius: 8px 0 0 8px; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 14px; letter-spacing: 2px; z-index: 10002; box-shadow: -2px 0 10px rgba(0,0,0,0.3); transition: right 0.3s ease;';
+            epgToggle.textContent = 'EPG';
+            
+            document.body.appendChild(epgSidebar);
+            document.body.appendChild(epgToggle);
 
             const video = document.getElementById('videoPlayer');
+            const videoWrapper = document.getElementById('videoWrapper');
+
+            // Resize video to max dimensions when metadata is loaded
+            function resizeVideo() {
+                if (video.videoWidth && video.videoHeight) {
+                    const videoRatio = video.videoWidth / video.videoHeight;
+                    const wrapperWidth = videoWrapper.clientWidth;
+                    const wrapperHeight = videoWrapper.clientHeight;
+                    const wrapperRatio = wrapperWidth / wrapperHeight;
+                    
+                    if (videoRatio > wrapperRatio) {
+                        // Video is wider - fit to width
+                        video.style.width = '100%';
+                        video.style.height = 'auto';
+                    } else {
+                        // Video is taller - fit to height
+                        video.style.width = 'auto';
+                        video.style.height = '100%';
+                    }
+                }
+            }
+
+            // Resize on metadata load and window resize
+            video.addEventListener('loadedmetadata', resizeVideo);
+            window.addEventListener('resize', resizeVideo);
 
             if (Hls.isSupported()) {
                 const hls = new Hls({
@@ -393,7 +561,30 @@
             }, 10000); // Every 10 seconds
         }
 
+        function toggleEPGSidebar() {
+            const sidebar = document.getElementById('epgSidebar');
+            const toggle = document.getElementById('epgToggle');
+            const isOpen = sidebar.style.transform === 'translateX(0%)';
+            
+            if (isOpen) {
+                sidebar.style.transform = 'translateX(100%)';
+                toggle.style.right = '0';
+            } else {
+                sidebar.style.transform = 'translateX(0%)';
+                toggle.style.right = '350px';
+            }
+        }
+
         function stopStream() {
+            // Remove resize listener
+            window.removeEventListener('resize', resizeVideo);
+            
+            // Remove EPG elements
+            const epgSidebar = document.getElementById('epgSidebar');
+            const epgToggle = document.getElementById('epgToggle');
+            if (epgSidebar) epgSidebar.remove();
+            if (epgToggle) epgToggle.remove();
+            
             // Stop heartbeat
             if (heartbeatInterval) {
                 clearInterval(heartbeatInterval);
