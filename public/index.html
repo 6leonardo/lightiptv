@@ -294,6 +294,20 @@
 
                 const data = await response.json();
                 
+                // Check for 429 status (Too Many Requests - max streams reached)
+                if (response.status === 429) {
+                    videoContent.innerHTML = `
+                        <div style="color: white; padding: 60px; text-align: center;">
+                            <h2>⚠️ Limite Raggiunto</h2>
+                            <p>Numero massimo di stream simultanei raggiunto (${data.maxStreams || 'N/A'})</p>
+                            <p>Stream attivi: ${data.activeStreams || 'N/A'}</p>
+                            <p>Riprova tra qualche minuto</p>
+                            <button onclick="closeVideoPlayer()" style="margin-top: 20px; padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer;">Chiudi</button>
+                        </div>
+                    `;
+                    return;
+                }
+                
                 if (data.error) {
                     throw new Error(data.error);
                 }

@@ -67,9 +67,29 @@ services:
 
 ### Environment Variables
 
+#### Required
 - **`THREADFIN_M3U_URL`**: URL of Threadfin's M3U playlist (can be internal Docker URL)
 - **`THREADFIN_XMLTV_URL`**: URL of Threadfin's XMLTV EPG (can be internal Docker URL)
-- **`PORT`**: LightIPTV server port (default: 3005)
+
+#### Optional
+- **`PORT`**: LightIPTV server port (default: `3005`)
+- **`MAX_STREAMS`**: Maximum concurrent active streams (default: `2`, use `0` for unlimited)
+- **`PREVIEWS_ENABLED`**: Enable automatic preview screenshot capture (default: `false`)
+- **`PREVIEWS_EPG_ONLY`**: Only capture previews for channels with EPG data (default: `true`)
+- **`PREVIEWS_EXCLUDE`**: Comma-separated list of channel TVG IDs to exclude from preview generation
+
+#### Example Configuration
+
+```yaml
+environment:
+  - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
+  - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
+  - PORT=3005
+  - MAX_STREAMS=2
+  - PREVIEWS_ENABLED=true
+  - PREVIEWS_EPG_ONLY=true
+  - PREVIEWS_EXCLUDE=
+```
 
 ### Volumes
 
@@ -118,8 +138,10 @@ The log updates in real-time during stream preparation and remains available dur
 - **Base image**: `node:20-alpine` (~150MB final with FFmpeg)
 - **FFmpeg**: HLS transcoding with 4-second segments
 - **Stream sharing**: Reuses same FFmpeg process for identical URLs
+- **Stream limit**: Configurable max concurrent streams (default: 2)
 - **Auto-cleanup**: Inactive streams terminated after 60 seconds
 - **EPG cache**: 1-hour cache duration to reduce Threadfin calls
+- **Preview screenshots**: Optional automatic thumbnail capture when idle (requires `PREVIEWS_ENABLED=true`)
 
 ## 🎯 Recommended Use Cases
 

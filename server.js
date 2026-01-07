@@ -13,6 +13,7 @@ const THREADFIN_XMLTV_URL = process.env.THREADFIN_XMLTV_URL || process.env.XMLTV
 const PREVIEWS_ENABLED = process.env.PREVIEWS_ENABLED === 'true';
 const PREVIEWS_EPG_ONLY = process.env.PREVIEWS_EPG_ONLY !== 'false'; // Default true
 const PREVIEWS_EXCLUDE = process.env.PREVIEWS_EXCLUDE ? process.env.PREVIEWS_EXCLUDE.split(',').map(s => s.trim()) : [];
+const MAX_STREAMS = parseInt(process.env.MAX_STREAMS || '2', 10);
 
 app.use(express.static('public'));
 app.use(express.json());
@@ -32,6 +33,7 @@ let previewsIndex = {};
 let previewQueue = [];
 let isCapturingPreview = false;
 let previewCheckInterval = null;
+let currentPreviewProcess = null;
 
 // Initialize previews directory and index
 async function initPreviews() {
@@ -346,6 +348,24 @@ app.post('/api/stream/start', async (req, res) => {
     }
   }
 
+  // Check if maximum streams limit is reached (0 = unlimited)
+  if (MAX_STREAMS > 0 && activeStreams.size >= MAX_STREAMS) {
+    console.log(`Max streams limit reached (${MAX_STREAMS}), rejecting new stream request`);
+    return res.status(429).json({ 
+      error: 'Max streams limit reached',
+      maxStreams: MAX_STREAMS,
+      activeStreams: activeStreams.size
+    });
+  }
+
+  // If a preview screenshot is in progress, kill it to free up resources
+  if (isCapturingPreview && currentPreviewProcess) {
+    console.log('Killing preview screenshot process to start stream...');
+    currentPreviewProcess.kill('SIGKILL');
+    currentPreviewProcess = null;
+    isCapturingPreview = false;
+  }
+
   // Generate unique session ID
   const sessionId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const streamDir = path.join(__dirname, 'public', 'streams', sessionId);
@@ -543,7 +563,10 @@ async function checkAndCapturePreview() {
         
         // Check if we already have a preview for this program
         const previewKey = `${channel.tvgId}_${currentProgram.start}`;
-        if (previewsIndex[channel.tvgId] === previewKey) continue;
+        const existingPreview = previewsIndex[channel.tvgId];
+        
+        // Skip if we already have this preview (success or error)
+        if (existingPreview && existingPreview.key === previewKey) continue;
         
         candidates.push({
           channel,
@@ -553,7 +576,10 @@ async function checkAndCapturePreview() {
       } else if (!PREVIEWS_EPG_ONLY) {
         // No EPG but PREVIEWS_EPG_ONLY is false - capture anyway
         const previewKey = `${channel.tvgId}_${Math.floor(now / 3600000)}`; // Hourly key
-        if (previewsIndex[channel.tvgId] === previewKey) continue;
+        const existingPreview = previewsIndex[channel.tvgId];
+        
+        // Skip if we already have this preview (success or error)
+        if (existingPreview && existingPreview.key === previewKey) continue;
         
         candidates.push({
           channel,
@@ -594,6 +620,7 @@ async function capturePreview(channel, program, previewKey) {
     
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      currentPreviewProcess = ffmpeg;
       
       let errorOutput = '';
       ffmpeg.stderr.on('data', (data) => {
@@ -601,6 +628,7 @@ async function capturePreview(channel, program, previewKey) {
       });
       
       ffmpeg.on('close', (code) => {
+        currentPreviewProcess = null;
         if (code === 0) {
           console.log(`Preview captured: ${channel.tvgId}`);
           resolve();
@@ -612,17 +640,34 @@ async function capturePreview(channel, program, previewKey) {
       
       // Timeout after 30 seconds
       setTimeout(() => {
-        ffmpeg.kill('SIGKILL');
+        if (ffmpeg && !ffmpeg.killed) {
+          ffmpeg.kill('SIGKILL');
+          currentPreviewProcess = null;
+        }
         reject(new Error('Preview capture timeout'));
       }, 30000);
     });
     
-    // Update index
-    previewsIndex[channel.tvgId] = previewKey;
+    // Update index with success status
+    previewsIndex[channel.tvgId] = {
+      key: previewKey,
+      status: 'success',
+      timestamp: new Date().toISOString(),
+      file: `${channel.tvgId}.jpg`
+    };
     await savePreviewsIndex();
     
   } catch (error) {
     console.error(`Error capturing preview for ${channel.name}:`, error.message);
+    
+    // Mark as error in index to avoid retrying until next cycle
+    previewsIndex[channel.tvgId] = {
+      key: previewKey,
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+    await savePreviewsIndex();
   } finally {
     isCapturingPreview = false;
   }
