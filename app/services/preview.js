@@ -146,6 +146,16 @@ async function capturePreview(channel, program, previewKey) {
 async function checkAndCapturePreview(activeStreamsCount) {
   if (!CONFIG.PREVIEWS.ENABLED) return;
   
+  // Safety: Cleanup stale processes (older than 2x timeout)
+  const now = Date.now();
+  for (const [sessionId, data] of state.activePreviewProcesses) {
+    if (now - data.startTime > CONFIG.PREVIEWS.CAPTURE_TIMEOUT * 2) {
+        console.warn(`[${sessionId}] Force cleaning stale preview process`);
+        if (data.process && !data.process.killed) data.process.kill('SIGKILL');
+        state.activePreviewProcesses.delete(sessionId);
+    }
+  }
+
   // Calculate available slots for preview captures
   const maxPreviewSlots = CONFIG.MAX_STREAMS === 0 ? Infinity : CONFIG.MAX_STREAMS;
   const usedSlots = activeStreamsCount + state.activePreviewProcesses.size;
@@ -188,14 +198,28 @@ async function checkAndCapturePreview(activeStreamsCount) {
         const previewKey = `${channel.tvgId}_${currentProgram.start}`;
         const existingPreview = state.previewsIndex[channel.tvgId];
         
-        if (existingPreview && existingPreview.key === previewKey) continue;
+        // Skip if success for this key
+        if (existingPreview && existingPreview.key === previewKey && existingPreview.status === 'success') continue;
+        
+        // If failed, retry after 2 minutes (120000ms)
+        if (existingPreview && existingPreview.key === previewKey && existingPreview.status === 'error') {
+            const lastAttempt = new Date(existingPreview.timestamp).getTime();
+            if (now.getTime() - lastAttempt < 120000) continue;
+        }
         
         candidates.push({ channel, program: currentProgram, previewKey });
       } else if (!CONFIG.PREVIEWS.EPG_ONLY) {
         const previewKey = `${channel.tvgId}_${Math.floor(now / 3600000)}`;
         const existingPreview = state.previewsIndex[channel.tvgId];
         
-        if (existingPreview && existingPreview.key === previewKey) continue;
+        // Skip if success for this key
+        if (existingPreview && existingPreview.key === previewKey && existingPreview.status === 'success') continue;
+        
+        // If failed, retry after 2 minutes
+        if (existingPreview && existingPreview.key === previewKey && existingPreview.status === 'error') {
+            const lastAttempt = new Date(existingPreview.timestamp).getTime();
+            if (now.getTime() - lastAttempt < 120000) continue;
+        }
         
         candidates.push({ channel, program: null, previewKey });
       }

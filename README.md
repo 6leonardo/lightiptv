@@ -95,6 +95,51 @@ environment:
 
 - **`./lightiptv/streams:/app/app/public/streams`**: External directory for HLS stream segments (avoids writing to container image)
 
+### 🛠 Customizing FFmpeg Transcoding
+
+You can fully customize the FFmpeg transcoding parameters by mounting your own configuration file. This allows you to tune performance, change codecs (e.g., use hardware acceleration), or adjust quality without rebuilding the image.
+
+1. Create a file named `ffmpeg-profile.js` locally.
+2. Use the following template and adjust the arguments as needed:
+
+```javascript
+const path = require('path');
+// You can require the config if needed, or just hardcode values
+// const CONFIG = require('../config');
+
+module.exports = function(streamUrl, streamDir) {
+  return [
+    '-fflags', '+genpts+igndts', // Required flags
+    '-f', 'mpegts',
+    '-i', streamUrl,
+    '-map', '0:v?',
+    '-map', '0:a?',
+    // --- Customization Area ---
+    '-c:v', 'libx264',           // Video Codec (e.g., h264_nvenc for NVIDIA)
+    '-preset', 'veryfast',       // Preset
+    '-tune', 'zerolatency',
+    '-r', '25',                  // Framerate
+    '-g', '50',                  // GOP Size
+    '-c:a', 'aac',               // Audio Codec
+    '-b:a', '128k',              // Audio Bitrate
+    // -------------------------
+    '-f', 'hls',
+    '-hls_time', '4',
+    '-hls_list_size', '8',
+    '-hls_flags', 'delete_segments+append_list',
+    path.join(streamDir, 'playlist.m3u8') // The output path is mandatory
+  ];
+};
+```
+
+3. Mount this file into the container via `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./lightiptv/streams:/app/app/public/streams
+  - ./my-ffmpeg-profile.js:/app/app/services/ffmpeg-profile.js # Mount custom profile
+```
+
 ## 🚀 Getting Started
 
 ```bash
