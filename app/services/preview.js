@@ -6,6 +6,8 @@ const CONFIG = require('../config');
 const { parseM3U } = require('../parsers/m3u');
 const { getEPGData } = require('./epg');
 
+let io = null;
+
 const state = {
   previewsIndex: {},
   activePreviewProcesses: new Map() // Map<sessionId, { process, channel, previewKey }>
@@ -116,6 +118,14 @@ async function capturePreview(channel, program, previewKey) {
       file: `${channel.tvgId}.jpg`
     };
     await savePreviewsIndex();
+
+    // Notify clients about new preview
+    if (io) {
+        io.emit('preview-updated', {
+            channelId: channel.tvgId,
+            previewUrl: `/streams/previews/${channel.tvgId}.jpg?t=${Date.now()}`
+        });
+    }
     
   } catch (error) {
     console.error(`[${sessionId}] Error capturing preview for ${channel.name}:`, error.message);
@@ -218,16 +228,21 @@ function killPreviewProcesses() {
   
   state.activePreviewProcesses.forEach((previewData, sessionId) => {
     if (previewData.process && !previewData.process.killed) {
-      previewData.process.kill('SIGKILL');
+        previewData.process.kill('SIGKILL');
     }
   });
-  
+
   state.activePreviewProcesses.clear();
+}
+
+function setIO(socketIO) {
+    io = socketIO;
 }
 
 module.exports = {
   state,
   initPreviews,
   checkAndCapturePreview,
-  killPreviewProcesses
+  killPreviewProcesses,
+  setIO
 };

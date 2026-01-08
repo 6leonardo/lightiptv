@@ -6,7 +6,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #333 0%, #000 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -252,7 +252,7 @@
 
         .filter-section {
             background: white;
-            padding: 20px;
+            padding: 0;
             border-radius: 12px;
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);

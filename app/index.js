@@ -5,7 +5,7 @@ const path = require('path');
 const CONFIG = require('./config');
 const { getEPGData } = require('./services/epg');
 const { startCleanupTask, state: streamState, setIO } = require('./services/stream');
-const { initPreviews, checkAndCapturePreview } = require('./services/preview');
+const { initPreviews, checkAndCapturePreview, setIO: setPreviewIO } = require('./services/preview');
 
 // Routes
 const channelsRouter = require('./routes/channels');
@@ -27,6 +27,7 @@ app.use('/api/stream', streamRouter);
 const server = http.createServer(app);
 const io = new Server(server);
 setIO(io);
+setPreviewIO(io);
 
 io.on('connection', (socket) => {
   console.log('Client connected');
