@@ -54,7 +54,7 @@ router.post('/start', async (req, res) => {
   try {
     await fs.mkdir(streamDir, { recursive: true });
 
-    const { process: ffmpeg, output: ffmpegOutput, command: ffmpegCommand } = createFFmpegProcess(streamUrl, streamDir);
+    const { process: ffmpeg, output: ffmpegOutput, logBuffer, command: ffmpegCommand } = createFFmpegProcess(streamUrl, streamDir, channelName, sessionId);
 
     ffmpeg.on('error', (error) => {
       console.error(`FFmpeg error [${sessionId}]:`, error);
@@ -76,6 +76,7 @@ router.post('/start', async (req, res) => {
       lastAccess: Date.now(),
       streamDir,
       ffmpegOutput,
+      logBuffer,
       ffmpegCommand
     });
 
@@ -156,6 +157,26 @@ router.post('/heartbeat/:sessionId', (req, res) => {
     res.json({ status: 'ok' });
   } else {
     res.status(404).json({ error: 'Stream not found' });
+  }
+});
+
+/**
+ * Get FFmpeg logs (polling endpoint)
+ */
+router.get('/logs/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const stream = streamState.activeStreams.get(sessionId);
+
+  if (stream && stream.logBuffer) {
+    // Get all logs from buffer
+    const logs = [...stream.logBuffer];
+    
+    // Clear the buffer after reading
+    stream.logBuffer.length = 0;
+    
+    res.json({ logs, command: stream.ffmpegCommand });
+  } else {
+    res.status(404).json({ error: 'Stream not found', logs: [] });
   }
 });
 

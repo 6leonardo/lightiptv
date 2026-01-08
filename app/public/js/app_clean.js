@@ -1,5 +1,6 @@
 let allChannels = [];
-const socket = io();
+
+
 
         let currentSessionId = null;
         let heartbeatInterval = null;
@@ -9,13 +10,6 @@ const socket = io();
         let currentChannel = null;
         let epgOnlyMode = localStorage.getItem('epgOnlyMode') === 'true';
         let previewsIndex = {};
-
-        // Socket.IO log listener
-        socket.on('log', (lines) => {
-            if (currentSessionId) {
-                appendFFmpegLog(lines);
-            }
-        });
 
         async function loadChannels() {
             try {
@@ -103,8 +97,7 @@ const socket = io();
                     const previewUrl = `/streams/previews/${channel.tvgId}.jpg`;
                     previewElement = `<img src="${previewUrl}" alt="Preview" class="channel-list-preview">`;
                 } else if (channel.logo) {
-                    const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
-                    previewElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
+                    previewElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
                 } else {
                     previewElement = `<div class="channel-list-logo placeholder">${channel.name.charAt(0).toUpperCase()}</div>`;
                 }
@@ -166,8 +159,7 @@ const socket = io();
 
                 let logoElement;
                 if (channel.logo) {
-                    const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
-                    logoElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
+                    logoElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
                 } else {
                     const initial = channel.name.charAt(0).toUpperCase();
                     logoElement = `<div class="channel-logo placeholder">${initial}</div>`;
@@ -520,8 +512,8 @@ const socket = io();
             
             videoContent.innerHTML = `
                 <div style="height: 100%; display: flex; flex-direction: column; background: #000;">
-                    <div id="videoWrapper" style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000;">
-                        <video id="videoPlayer" controls="" autoplay="" style="max-width: 100%; max-height: 100%;"></video>
+                    <div id="videoWrapper" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <video id="videoPlayer" controls="" autoplay="" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;"></video>
                     </div>
                     <div style="color: white; padding: 15px; background: rgba(0,0,0,0.9);">
                         <h3 style="margin: 0;">${channel.name}</h3>
@@ -551,65 +543,35 @@ const socket = io();
             epgToggle.style.cssText = 'position: fixed; right: 0; top: 50%; transform: translateY(-50%); background: rgba(76, 175, 80, 0.9); color: white; padding: 30px 8px; cursor: pointer; border-radius: 8px 0 0 8px; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 14px; letter-spacing: 2px; z-index: 10002; box-shadow: -2px 0 10px rgba(0,0,0,0.3); transition: right 0.3s ease;';
             epgToggle.textContent = 'EPG';
             
-            // Create Log toggle button (left side)
-            const logToggle = document.createElement('div');
-            logToggle.id = 'logToggle';
-            logToggle.onclick = toggleFFmpegLog;
-            logToggle.style.cssText = 'position: fixed; left: 0; top: 50%; transform: translateY(-50%); background: rgba(33, 150, 243, 0.9); color: white; padding: 30px 8px; cursor: pointer; border-radius: 0 8px 8px 0; font-weight: bold; writing-mode: vertical-rl; text-orientation: mixed; font-size: 14px; letter-spacing: 2px; z-index: 10002; box-shadow: 2px 0 10px rgba(0,0,0,0.3); transition: left 0.3s ease;';
-            logToggle.textContent = 'LOGS';
-
             document.body.appendChild(epgSidebar);
             document.body.appendChild(epgToggle);
-            document.body.appendChild(logToggle);
 
             const video = document.getElementById('videoPlayer');
             const videoWrapper = document.getElementById('videoWrapper');
 
-            // Function to resize video based on actual dimensions
+            // Resize video to max dimensions when metadata is loaded
             function resizeVideo() {
-                if (video.videoWidth && video.videoHeight && videoWrapper.clientWidth && videoWrapper.clientHeight) {
+                if (video.videoWidth && video.videoHeight) {
                     const videoRatio = video.videoWidth / video.videoHeight;
-                    const containerWidth = videoWrapper.clientWidth;
-                    const containerHeight = videoWrapper.clientHeight;
-                    const containerRatio = containerWidth / containerHeight;
+                    const wrapperWidth = videoWrapper.clientWidth;
+                    const wrapperHeight = videoWrapper.clientHeight;
+                    const wrapperRatio = wrapperWidth / wrapperHeight;
                     
-                    console.log(`Container: ${containerWidth}x${containerHeight}, Video: ${video.videoWidth}x${video.videoHeight}`);
-                    
-                    if (videoRatio > containerRatio) {
-                        // Video wider than container - fit to width
-                        const newWidth = containerWidth;
-                        const newHeight = containerWidth / videoRatio;
-                        video.style.width = newWidth + 'px';
-                        video.style.height = newHeight + 'px';
-                        console.log(`Set size (width-fit): ${newWidth}x${newHeight}`);
+                    if (videoRatio > wrapperRatio) {
+                        // Video is wider - fit to width
+                        video.style.width = '100%';
+                        video.style.height = 'auto';
                     } else {
-                        // Video taller than container - fit to height
-                        const newHeight = containerHeight;
-                        const newWidth = containerHeight * videoRatio;
-                        video.style.width = newWidth + 'px';
-                        video.style.height = newHeight + 'px';
-                        console.log(`Set size (height-fit): ${newWidth}x${newHeight}`);
+                        // Video is taller - fit to height
+                        video.style.width = 'auto';
+                        video.style.height = '100%';
                     }
-                } else {
-                    console.log(`Cannot resize - wrapper: ${videoWrapper.clientWidth}x${videoWrapper.clientHeight}, video: ${video.videoWidth}x${video.videoHeight}`);
                 }
             }
-            
-            // Resize on metadata load (initial size detection)
-            video.addEventListener('loadedmetadata', () => {
-                console.log('Video metadata loaded');
-                resizeVideo();
-            });
-            
-            // Resize on window resize
-            const resizeObserver = new ResizeObserver(() => {
-                console.log('Container resized');
-                resizeVideo();
-            });
-            resizeObserver.observe(videoWrapper);
-            
-            // Store observer for cleanup
-            video.resizeObserver = resizeObserver;
+
+            // Resize on metadata load and window resize
+            video.addEventListener('loadedmetadata', resizeVideo);
+            window.addEventListener('resize', resizeVideo);
 
             if (Hls.isSupported()) {
                 const hls = new Hls({
@@ -654,9 +616,6 @@ const socket = io();
 
             // Start heartbeat to keep stream alive
             startHeartbeat();
-            
-            // Join socket room for logs
-            socket.emit('join-stream', currentSessionId);
         }
 
         function startHeartbeat() {
@@ -671,25 +630,6 @@ const socket = io();
                     }).catch(err => console.error('Heartbeat error:', err));
                 }
             }, 10000); // Every 10 seconds
-        }
-
-        function appendFFmpegLog(lines) {
-            if (!ffmpegLogElement) {
-                createFFmpegLog();
-            }
-            
-            const textToAdd = lines.join('\n') + '\n';
-            ffmpegLogElement.textContent += textToAdd;
-            
-            // Limit buffer size to avoid memory issues (keep last 50k characters roughly)
-            if (ffmpegLogElement.textContent.length > 50000) {
-                ffmpegLogElement.textContent = ffmpegLogElement.textContent.slice(-50000);
-            }
-
-            // Auto-scroll if visible
-            if (ffmpegLogVisible) {
-                ffmpegLogElement.scrollTop = ffmpegLogElement.scrollHeight;
-            }
         }
 
         function toggleEPGSidebar() {
@@ -707,34 +647,25 @@ const socket = io();
         }
 
         function stopStream() {
+            // Remove resize listener
+            window.removeEventListener('resize', resizeVideo);
+            
+            // Remove EPG elements
+            const epgSidebar = document.getElementById('epgSidebar');
+            const epgToggle = document.getElementById('epgToggle');
+            if (epgSidebar) epgSidebar.remove();
+            if (epgToggle) epgToggle.remove();
+            
             // Stop heartbeat
             if (heartbeatInterval) {
                 clearInterval(heartbeatInterval);
                 heartbeatInterval = null;
             }
-            
-            // Leave socket room
-            if (currentSessionId) {
-                socket.emit('leave-stream', currentSessionId);
-            }
-            
-            // Remove EPG elements
-            const epgSidebar = document.getElementById('epgSidebar');
-            const epgToggle = document.getElementById('epgToggle');
-            const logToggle = document.getElementById('logToggle');
-            if (epgSidebar) epgSidebar.remove();
-            if (epgToggle) epgToggle.remove();
-            if (logToggle) logToggle.remove();
 
-            // Destroy HLS instance and cleanup observers
+            // Destroy HLS instance
             const video = document.getElementById('videoPlayer');
-            if (video) {
-                if (video.hlsInstance) {
-                    video.hlsInstance.destroy();
-                }
-                if (video.resizeObserver) {
-                    video.resizeObserver.disconnect();
-                }
+            if (video && video.hlsInstance) {
+                video.hlsInstance.destroy();
             }
 
             // Stop stream on backend
@@ -805,9 +736,7 @@ const socket = io();
             }
             
             const fullText = `$ ${command}\n\n${output.join('\n')}`;
-            // Truncate from top (keep last 200 lines to show recent output)
-            const lines = fullText.split('\n');
-            const truncated = lines.length > 200 ? lines.slice(-200).join('\n') : fullText;
+            const truncated = fullText.length > 5000 ? fullText.slice(-5000) : fullText;
             
             ffmpegLogElement.textContent = truncated;
             

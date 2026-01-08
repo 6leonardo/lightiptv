@@ -1,8 +1,10 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
 const CONFIG = require('./config');
 const { getEPGData } = require('./services/epg');
-const { startCleanupTask, state: streamState } = require('./services/stream');
+const { startCleanupTask, state: streamState, setIO } = require('./services/stream');
 const { initPreviews, checkAndCapturePreview } = require('./services/preview');
 
 // Routes
@@ -20,6 +22,25 @@ app.use(express.json());
 app.use('/api', channelsRouter);
 app.use('/api', epgRouter);
 app.use('/api/stream', streamRouter);
+
+// Initialize Socket.IO
+const server = http.createServer(app);
+const io = new Server(server);
+setIO(io);
+
+io.on('connection', (socket) => {
+  console.log('Client connected');
+  
+  socket.on('join-stream', (sessionId) => {
+    socket.join(sessionId);
+    console.log(`Client joined stream room: ${sessionId}`);
+  });
+  
+  socket.on('leave-stream', (sessionId) => {
+    socket.leave(sessionId);
+    console.log(`Client left stream room: ${sessionId}`);
+  });
+});
 
 /**
  * Start periodic tasks
@@ -57,6 +78,6 @@ async function start() {
   startPeriodicTasks();
 }
 
-app.listen(CONFIG.PORT, start);
+server.listen(CONFIG.PORT, start);
 
 module.exports = app;
