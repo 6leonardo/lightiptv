@@ -1,0 +1,21 @@
+# Dipendenze e Git
+node_modules
+.git
+.gitignore
+
+# Env file (non includere mai secrets nell'immagine)
+.env
+.env.local
+
+# File di sistema
+.DS_Store
+Thumbs.db
+
+# File temporanei applicazione
+# Ignora tutto il contenuto della cartella streams
+app/public/streams/*
+
+# Documentazione e backup non necessari in prod
+docs/
+*.backup
+*.log
