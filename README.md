@@ -74,9 +74,6 @@ services:
 #### Optional
 - **`PORT`**: LightIPTV server port (default: `3005`)
 - **`MAX_STREAMS`**: Maximum concurrent active streams (default: `2`, use `0` for unlimited)
-- **`PREVIEWS_ENABLED`**: Enable automatic preview screenshot capture (default: `false`)
-- **`PREVIEWS_EPG_ONLY`**: Only capture previews for channels with EPG data (default: `true`)
-- **`PREVIEWS_EXCLUDE`**: Comma-separated list of channel TVG IDs to exclude from preview generation
 
 #### Example Configuration
 
@@ -86,9 +83,6 @@ environment:
   - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
   - PORT=3005
   - MAX_STREAMS=2
-  - PREVIEWS_ENABLED=true
-  - PREVIEWS_EPG_ONLY=true
-  - PREVIEWS_EXCLUDE=
 ```
 
 ### Volumes
@@ -186,7 +180,6 @@ The log updates in real-time during stream preparation and remains available dur
 - **Stream limit**: Configurable max concurrent streams (default: 2)
 - **Auto-cleanup**: Inactive streams terminated after 60 seconds
 - **EPG cache**: 1-hour cache duration to reduce Threadfin calls
-- **Preview screenshots**: Optional automatic thumbnail capture when idle (requires `PREVIEWS_ENABLED=true`)
 
 ## 🎯 Recommended Use Cases
 
@@ -206,4 +199,3 @@ The log updates in real-time during stream preparation and remains available dur
 Successfully tested with Italian digital terrestrial and satellite channels.
 
 **Not recommended for:** heavy usage, production with many simultaneous users, 24/7 streaming.
-

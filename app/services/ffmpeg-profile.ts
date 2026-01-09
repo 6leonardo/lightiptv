@@ -1,15 +1,10 @@
-const path = require('path');
-const CONFIG = require('../config');
+import CONFIG from '../config/index.js';
 
 /**
  * Generates FFmpeg arguments for the stream.
  * This file can be mounted via Docker volume to customize FFmpeg parameters.
- * 
- * @param {string} streamUrl - The source URL of the stream
- * @param {string} streamDir - The output directory for HLS segments
- * @returns {string[]} Array of FFmpeg arguments
  */
-module.exports = function(streamUrl, streamDir) {
+export default function getFFmpegArgs(filename: string, streamUrl: string): string[] {
   return [
     '-fflags', '+genpts+igndts',
     '-f', 'mpegts',
@@ -28,6 +23,6 @@ module.exports = function(streamUrl, streamDir) {
     '-hls_time', CONFIG.FFMPEG.HLS_TIME.toString(),
     '-hls_list_size', CONFIG.FFMPEG.HLS_LIST_SIZE.toString(),
     '-hls_flags', 'delete_segments+append_list',
-    path.join(streamDir, 'playlist.m3u8')
+    filename
   ];
-};
+}

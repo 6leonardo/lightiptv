@@ -8,14 +8,6 @@ export async function fetchEPG() {
     return await response.json();
 }
 
-export async function fetchPreviewsIndex() {
-    const response = await fetch('/api/previews-index');
-    if (response.ok) {
-        return await response.json();
-    }
-    throw new Error('Previews index not available');
-}
-
 export async function startStreamAPI(streamUrl, channelName) {
     const response = await fetch('/api/stream/start', {
         method: 'POST',

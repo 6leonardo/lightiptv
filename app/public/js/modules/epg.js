@@ -15,7 +15,7 @@ export async function loadEPGBackground(refreshCallback) {
 }
 
 export function showChannelEPG(tvgId, channelName) {
-    if (!tvgId || !state.epgData || !state.epgData.epgData[tvgId]) {
+    if (!tvgId || !state.epgData || !state.epgData[tvgId]) {
         alert('No EPG available for this channel');
         return;
     }
@@ -26,7 +26,7 @@ export function showChannelEPG(tvgId, channelName) {
 
     modalTitle.textContent = `EPG - ${channelName}`;
 
-    const programs = state.epgData.epgData[tvgId];
+    const programs = state.epgData[tvgId];
     const now = new Date();
 
     // Group programs by date

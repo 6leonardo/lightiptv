@@ -12,77 +12,32 @@ export function setHandlers(start, stop, toggleLog) {
 }
 
 export function updateChannelPreview(channelId, previewUrl) {
-    // Determine context (list vs grid)
-    const listPreview = document.querySelector(`.channel-list-item img[src*="${channelId}"]`) || 
-                        document.querySelector(`.channel-list-item .channel-list-logo.placeholder`); 
-                        // Note: placeholders might range harder to find specifically without ID, usually better to add data-id.
-    
-    // Better strategy: Add data-id to elements
     const channelElements = document.querySelectorAll(`[data-channel-id="${channelId}"]`);
-
     channelElements.forEach(el => {
-        // Update Preview Image
-        const img = el.querySelector('img');
+        const img = el.querySelector('.channel-list-preview');
         if (img) {
             img.src = previewUrl;
-            img.classList.remove('logo-mode'); // Ensure it's treated as preview
-            img.classList.add('channel-list-preview'); 
-        } else {
-             // Replace placeholder with image
-             const placeholder = el.querySelector('.placeholder');
-             if (placeholder) {
-                 const newImg = document.createElement('img');
-                 newImg.src = previewUrl;
-                 newImg.alt = "Preview";
-                 newImg.className = "channel-list-preview"; // or channel-logo based on view.
-                 // We need to know if it is list or grid.. 
-                 if (el.classList.contains('channel-card')) {
-                     newImg.className = "channel-logo";
-                 }
-                 placeholder.replaceWith(newImg);
-             }
-        }
-
-        // Update EPG info if in EPG mode
-        if (state.epgOnlyMode && state.epgData && state.epgData.epgData[channelId]) {
-             updateChannelEPGDisplay(el, channelId);
+            img.classList.remove('logo-mode');
         }
     });
-
-    // If we can't find elements easily, we might need to re-render.
-    // However, re-rendering everything is expensive.
-    // Let's modify the creation flow to include data-id first.
 }
 
-function updateChannelEPGDisplay(containerInfo, channelId) {
-    // Logic to re-read EPG from state and update text
-     const programs = state.epgData.epgData[channelId];
-     const now = new Date();
-     const currentProgram = programs.find(p => {
+function getCurrentProgram(channelId) {
+    if (!state.epgData || !state.epgData[channelId]) return null;
+
+    const programs = state.epgData[channelId];
+    const now = new Date();
+    return programs.find(p => {
         const start = new Date(p.start);
         const stop = new Date(p.stop);
         return now >= start && now <= stop;
-    });
-
-    if (currentProgram) {
-        // Update Title
-        const titleEl = containerInfo.querySelector('.channel-list-current') || containerInfo.querySelector('.epg-info-title');
-        if (titleEl) titleEl.textContent = currentProgram.title;
-
-        // Update Time
-        const start = new Date(currentProgram.start);
-        const stop = new Date(currentProgram.stop);
-        const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
-        
-        const timeEl = containerInfo.querySelector('.channel-list-time') || containerInfo.querySelector('.epg-info-time');
-        if (timeEl) timeEl.textContent = timeStr;
-    }
+    }) || null;
 }
 
 export function displayChannels(channels) {
     state.filteredChannels = channels; // Store currently filtered list logic
     const content = document.getElementById('content');
-    
+
     if (channels.length === 0) {
         content.innerHTML = '<div class="loading">No channels found</div>';
         updateStats(0, state.allChannels.length);
@@ -93,7 +48,7 @@ export function displayChannels(channels) {
     let displayChannelsList = channels;
     if (state.epgOnlyMode) {
         displayChannelsList = channels.filter(ch => {
-            return state.epgData && ch.tvgId && state.epgData.epgData[ch.tvgId] && state.epgData.epgData[ch.tvgId].length > 0;
+            return state.epgData && ch.tvgId && state.epgData[ch.tvgId] && state.epgData[ch.tvgId].length > 0;
         });
 
         // Sort by channel number
@@ -109,7 +64,7 @@ export function displayChannels(channels) {
     // Pagination Logic
     const totalItems = displayChannelsList.length;
     const totalPages = Math.ceil(totalItems / state.itemsPerPage);
-    
+
     // Ensure currentPage is valid
     if (state.currentPage > totalPages) state.currentPage = 1;
     if (state.currentPage < 1) state.currentPage = 1;
@@ -126,7 +81,7 @@ export function displayChannels(channels) {
 
     // Add Pagination Controls
     renderPaginationControls(content, totalPages);
-    
+
     updateStats(paginatedChannels.length, state.allChannels.length, startIndex + 1, endIndex, totalItems);
 }
 
@@ -136,7 +91,7 @@ function renderPaginationControls(container, totalPages) {
     const paginationDiv = document.createElement('div');
     paginationDiv.className = 'pagination-controls';
     paginationDiv.style.cssText = 'display: flex; justify-content: center; gap: 10px; padding: 20px; align-items: center; color: white;';
-    
+
     // Prev Button
     const prevBtn = document.createElement('button');
     prevBtn.textContent = '« Prev';
@@ -170,7 +125,7 @@ function renderPaginationControls(container, totalPages) {
     paginationDiv.appendChild(prevBtn);
     paginationDiv.appendChild(pageInfo);
     paginationDiv.appendChild(nextBtn);
-    
+
     container.appendChild(paginationDiv);
 }
 
@@ -196,22 +151,18 @@ function displayListView(channels) {
     const content = document.getElementById('content');
     const list = document.createElement('div');
     list.className = 'channels-list';
-    
+
     channels.forEach(channel => {
         const item = document.createElement('div');
         item.className = 'channel-list-item';
         item.dataset.channelId = channel.tvgId; // Add ID for selective updates
 
-        // Preview or logo element
+        // Preview icon (EPG) or logo element
         let previewElement = '';
-        const hasPreview = state.previewsIndex[channel.tvgId] && state.previewsIndex[channel.tvgId].status === 'success';
-        
-        if (hasPreview) {
-            const previewUrl = `/streams/previews/${channel.tvgId}.jpg`;
-            previewElement = `<img src="${previewUrl}" alt="Preview" class="channel-list-preview">`;
-        } else if (channel.logo) {
-            const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
-            previewElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-list-preview logo-mode" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
+        const currentProgram = getCurrentProgram(channel.tvgId);
+
+        if (currentProgram.preview || channel.logo) {
+            previewElement = `<img src="${currentProgram?.preview ? currentProgram?.preview : channel.logo}" alt="EPG Icon" class="channel-list-preview" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
         } else {
             previewElement = `<div class="channel-list-logo placeholder">${channel.name.charAt(0).toUpperCase()}</div>`;
         }
@@ -220,21 +171,11 @@ function displayListView(channels) {
         let currentText = '';
         let timeStr = '';
 
-        if (state.epgData && state.epgData.epgData[channel.tvgId]) {
-            const programs = state.epgData.epgData[channel.tvgId];
-            const now = new Date();
-            const currentProgram = programs.find(p => {
-                const start = new Date(p.start);
-                const stop = new Date(p.stop);
-                return now >= start && now <= stop;
-            });
-
-            if (currentProgram) {
-                const start = new Date(currentProgram.start);
-                const stop = new Date(currentProgram.stop);
-                timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
-                currentText = currentProgram.title;
-            }
+        if (currentProgram) {
+            const start = new Date(currentProgram.start);
+            const stop = new Date(currentProgram.stop);
+            timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
+            currentText = currentProgram.title;
         }
 
         item.innerHTML = `
@@ -274,19 +215,18 @@ function displayGridView(channels) {
 
         let logoElement;
         if (channel.logo) {
-            const logoProxyUrl = `/api/logo-proxy?url=${encodeURIComponent(channel.logo)}`;
-            logoElement = `<img src="${logoProxyUrl}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
+            logoElement = `<img src="${channel.logo}" alt="${channel.name}" class="channel-logo" onerror="this.onerror=null; this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'channel-name\\'>${channel.name}</div>')">`;
         } else {
             const initial = channel.name.charAt(0).toUpperCase();
             logoElement = `<div class="channel-logo placeholder">${initial}</div>`;
         }
 
         let epgInfoHtml = '';
-        const hasEPG = state.epgData && channel.tvgId && state.epgData.epgData[channel.tvgId];
-        
+        const hasEPG = state.epgData && channel.tvgId && state.epgData[channel.tvgId];
+
         if (hasEPG) {
             const now = new Date();
-            const programs = state.epgData.epgData[channel.tvgId];
+            const programs = state.epgData[channel.tvgId];
             const currentProgram = programs.find(p => {
                 const start = new Date(p.start);
                 const stop = new Date(p.stop);
@@ -304,7 +244,7 @@ function displayGridView(channels) {
                     </div>
                 `;
             } else {
-                 epgInfoHtml = `<div class="no-epg-placeholder">📋 View EPG</div>`;
+                epgInfoHtml = `<div class="no-epg-placeholder">📋 View EPG</div>`;
             }
         }
 
@@ -314,7 +254,7 @@ function displayGridView(channels) {
             ${epgInfoHtml}
             ${channel.group ? `<div class="channel-group">${channel.group}</div>` : ''}
         `;
-        
+
         const epgDiv = card.querySelector('.epg-info') || card.querySelector('.no-epg-placeholder');
         if (epgDiv) {
             epgDiv.addEventListener('click', (e) => {
@@ -340,9 +280,9 @@ export function updateStats(displayed, total, start = null, end = null, totalFil
     const stats = document.getElementById('stats');
     if (stats) {
         if (start !== null) {
-             stats.textContent = `Showing ${start}-${end} of ${totalFiltered} channels (Total: ${total})`;
+            stats.textContent = `Showing ${start}-${end} of ${totalFiltered} channels (Total: ${total})`;
         } else {
-             stats.textContent = `Shown ${displayed} of ${total} channels`;
+            stats.textContent = `Shown ${displayed} of ${total} channels`;
         }
     }
 }
@@ -352,7 +292,7 @@ export function showLoadingOverlay(channelName) {
     const overlay = document.getElementById('videoOverlay');
     const videoContent = document.getElementById('videoContent');
     overlay.classList.add('active');
-    
+
     videoContent.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
             <div class="spinner"></div>
@@ -391,8 +331,8 @@ export function renderPlayerError(message) {
 }
 
 export function renderLimitReached(maxStreams, activeStreams, closeCallback) {
-     const videoContent = document.getElementById('videoContent');
-     videoContent.innerHTML = `
+    const videoContent = document.getElementById('videoContent');
+    videoContent.innerHTML = `
         <div style="color: white; padding: 60px; text-align: center;">
             <h2>⚠️ Limit Reached</h2>
             <p>Max concurrent streams reached (${maxStreams || 'N/A'})</p>
@@ -407,29 +347,29 @@ export function renderLimitReached(maxStreams, activeStreams, closeCallback) {
 
 export function renderPlayerInterface(channel) {
     const videoContent = document.getElementById('videoContent');
-    
+
     // EPG Logic for player sidebar
     let epgHtml = '';
-    if (state.epgData && channel.tvgId && state.epgData.epgData[channel.tvgId]) {
+    if (state.epgData && channel.tvgId && state.epgData[channel.tvgId]) {
         const now = new Date();
-        const programs = state.epgData.epgData[channel.tvgId];
-        
+        const programs = state.epgData[channel.tvgId];
+
         const currentProgram = programs.find(p => {
             const start = new Date(p.start);
             const stop = new Date(p.stop);
             return now >= start && now <= stop;
         });
-        
+
         const futurePrograms = programs.filter(p => new Date(p.start) > now).slice(0, 5);
-        
+
         epgHtml = '<div style="padding: 20px; overflow-y: auto; max-height: 100%;">';
         epgHtml += '<h3 style="color: #4caf50; margin-top: 0;">Program Guide</h3>';
-        
+
         if (currentProgram) {
             const start = new Date(currentProgram.start);
             const stop = new Date(currentProgram.stop);
             const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
-            
+
             epgHtml += '<div style="background: rgba(76, 175, 80, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">';
             epgHtml += '<div style="color: #4caf50; font-weight: bold; font-size: 0.85em; margin-bottom: 5px;">NOW PLAYING</div>';
             epgHtml += `<div style="font-weight: bold; margin-bottom: 5px;">${currentProgram.title}</div>`;
@@ -445,7 +385,7 @@ export function renderPlayerInterface(channel) {
                 const start = new Date(program.start);
                 const stop = new Date(program.stop);
                 const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
-                
+
                 epgHtml += '<div style="padding: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.05); border-radius: 6px;">';
                 epgHtml += `<div style="font-weight: 500; margin-bottom: 3px;">${program.title}</div>`;
                 epgHtml += `<div style="color: #888; font-size: 0.85em;">${timeStr}</div>`;
@@ -506,7 +446,7 @@ function toggleEPGSidebar() {
     const sidebar = document.getElementById('epgSidebar');
     const toggle = document.getElementById('epgToggle');
     const isOpen = sidebar.style.transform === 'translateX(0%)';
-    
+
     if (isOpen) {
         sidebar.style.transform = 'translateX(100%)';
         toggle.style.right = '0';
@@ -569,16 +509,16 @@ export function toggleFFmpegLog() {
 
 export function appendFFmpegLog(lines) {
     if (!state.ffmpegLogElement) createFFmpegLog();
-    
+
     // Add new lines, but only keep the last 50 lines total
     const currentLines = state.ffmpegLogElement.textContent.split('\n');
     const newLogs = [...currentLines, ...lines].filter(line => line.trim() !== '');
-    
+
     // Keep only last 50 lines
     const limitedLines = newLogs.slice(-50);
-    
+
     state.ffmpegLogElement.textContent = limitedLines.join('\n') + '\n';
-    
+
     if (state.ffmpegLogVisible) {
         state.ffmpegLogElement.scrollTop = state.ffmpegLogElement.scrollHeight;
     }
@@ -586,11 +526,11 @@ export function appendFFmpegLog(lines) {
 
 export function updateFFmpegLog(command, output) {
     if (!state.ffmpegLogElement) createFFmpegLog();
-    
+
     const fullText = `$ ${command}\n\n${output.join('\n')}`;
     const lines = fullText.split('\n');
     const truncated = lines.length > 200 ? lines.slice(-200).join('\n') : fullText;
-    
+
     state.ffmpegLogElement.textContent = truncated;
     if (state.ffmpegLogVisible) {
         state.ffmpegLogElement.scrollTop = state.ffmpegLogElement.scrollHeight;

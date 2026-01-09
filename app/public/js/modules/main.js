@@ -14,9 +14,8 @@ state.socket.on('log', (lines) => {
     }
 });
 
-state.socket.on('preview-updated', (data) => {
-    if (state.epgOnlyMode) {
-        // In EPG only mode (which might mean list view with previews), update the specific item
+state.socket.on('epg-icon-updated', (data) => {
+    if (data && data.channelId && data.previewUrl) {
         UI.updateChannelPreview(data.channelId, data.previewUrl);
     }
 });
@@ -74,23 +73,10 @@ async function init() {
     try {
         const data = await API.fetchChannels();
         if (data.error) throw new Error(data.error);
-        
+        state.epgData = await API.fetchEPG();
+        if(state.epgData.error) throw new Error(state.epgData.error);
         state.allChannels = data.channels;
-        
-        // Load background data
-        EPG.loadEPGBackground(() => {
-             // Refresh if EPG loads later
-             UI.displayChannels(state.allChannels);
-        });
-        
-        try {
-            state.previewsIndex = await API.fetchPreviewsIndex();
-        } catch (e) {
-            console.log('Previews not available');
-        }
-
         UI.displayChannels(state.allChannels);
-        // UI.updateStats(state.allChannels.length, state.allChannels.length); // Handled inside
 
     } catch (error) {
         console.error('Init error:', error);

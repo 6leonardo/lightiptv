@@ -13,7 +13,9 @@ Thumbs.db
 
 # File temporanei applicazione
 # Ignora tutto il contenuto della cartella streams
-app/public/streams/*
+app/public/cached/*
+app/data/*
+
 
 # Documentazione e backup non necessari in prod
 docs/
