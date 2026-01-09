@@ -25,9 +25,12 @@ router.post('/start', async (req: Request, res: Response) => {
 	}
 
 
+	const m3u8Url = new URL(stream.streamUrl, baseUrl).toString();
+
 	return res.json({
 		sessionId: stream.sessionId,
-		m3u8Url: `${baseUrl}/${stream.streamUrl}`,
+		m3u8Url,
+		m3u8Path: stream.streamUrl,
 		message: sessionId !== stream.sessionId ? 'Stream reused' : 'New stream started',
 		reused: sessionId !== stream.sessionId
 	});
@@ -51,16 +54,18 @@ router.get('/status/:sessionId', async (req: Request, res: Response) => {
 		const maxWaitTime = 20000;
 		const timeProgress = Math.min((status.elapsedTime / maxWaitTime) * 100, 100);
 
-		const hasSecondTs = status.tsFiles.length >= 2;
+		const hasSecondTs = status.tsFiles.length >= 3;
 		const ready = hasSecondTs && status.m3u8Exists;
 
+		const statusUrl = new URL(stream.streamUrl, `${req.protocol}://${req.get('host')}`).toString();
 		res.json({
 			ready,
 			tsCount: status.tsFiles.length,
 			m3u8Exists: status.m3u8Exists,
 			progress: ready ? 100 : Math.floor(timeProgress),
 			elapsedTime: Math.floor(status.elapsedTime / 1000),
-			m3u8Url: `${req.protocol}://${req.get('host')}/${stream.streamUrl}`,
+			m3u8Url: statusUrl,
+			m3u8Path: stream.streamUrl,
 			ffmpegCommand: "ffmpeg",
 			ffmpegOutput: ""
 		});

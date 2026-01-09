@@ -5,6 +5,8 @@ let startStreamHandler = null;
 let stopStreamHandler = null;
 let toggleLogHandler = null;
 
+const EPG_HOURS_AHEAD = 6;
+
 export function setHandlers(start, stop, toggleLog) {
     startStreamHandler = start;
     stopStreamHandler = stop;
@@ -14,10 +16,15 @@ export function setHandlers(start, stop, toggleLog) {
 export function updateChannelPreview(channelId, previewUrl) {
     const channelElements = document.querySelectorAll(`[data-channel-id="${channelId}"]`);
     channelElements.forEach(el => {
-        const img = el.querySelector('.channel-list-preview');
+        const img = el.querySelector('.epg-program-card.current .epg-card-image') || 
+            el.querySelector('.epg-program-card .epg-card-image') || 
+            el.querySelector('.channel-list-preview');
         if (img) {
             img.src = previewUrl;
             img.classList.remove('logo-mode');
+            if (img.classList.contains('epg-card-image')) {
+                img.onload = () => applyCardAspectClass(img.closest('.epg-program-card'), img);
+            }
         }
     });
 }
@@ -32,6 +39,39 @@ function getCurrentProgram(channelId) {
         const stop = new Date(p.stop);
         return now >= start && now <= stop;
     }) || null;
+}
+
+function getProgramsForWindow(channelId, hoursAhead) {
+    if (!state.epgData || !state.epgData[channelId]) return [];
+
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+    const programs = state.epgData[channelId];
+    const currentProgram = programs.find(p => {
+        const start = new Date(p.start);
+        const stop = new Date(p.stop);
+        return now >= start && now <= stop;
+    }) || null;
+
+    const upcomingPrograms = programs.filter(p => {
+        const start = new Date(p.start);
+        return start > now && start <= windowEnd;
+    });
+
+    return currentProgram ? [currentProgram, ...upcomingPrograms] : upcomingPrograms;
+}
+
+function applyCardAspectClass(card, img) {
+    if (!card || !img || !img.naturalWidth || !img.naturalHeight) return;
+    const ratio = img.naturalWidth / img.naturalHeight;
+    card.classList.remove('epg-card-horizontal', 'epg-card-vertical', 'epg-card-square');
+    if (ratio >= 1.25) {
+        card.classList.add('epg-card-horizontal');
+    } else if (ratio <= 0.85) {
+        card.classList.add('epg-card-vertical');
+    } else {
+        card.classList.add('epg-card-square');
+    }
 }
 
 export function displayChannels(channels) {
@@ -150,53 +190,94 @@ function stylePagButton(btn) {
 function displayListView(channels) {
     const content = document.getElementById('content');
     const list = document.createElement('div');
-    list.className = 'channels-list';
+    list.className = 'channels-epg-list';
 
     channels.forEach(channel => {
-        const item = document.createElement('div');
-        item.className = 'channel-list-item';
-        item.dataset.channelId = channel.tvgId; // Add ID for selective updates
+        const row = document.createElement('div');
+        row.className = 'channel-epg-row';
+        row.dataset.channelId = channel.tvgId;
 
-        // Preview icon (EPG) or logo element
-        let previewElement = '';
-        const currentProgram = getCurrentProgram(channel.tvgId);
+        const logoUrl = channel.logo;
+        const initial = channel.name.charAt(0).toUpperCase();
+        const logoHtml = logoUrl ?
+            `<img src="${logoUrl}" alt="${channel.name}" class="channel-epg-logo" onerror="this.outerHTML='<div class=\\'channel-epg-logo placeholder\\'>${initial}</div>';">` :
+            `<div class="channel-epg-logo placeholder">${initial}</div>`;
 
-        if (currentProgram.preview || channel.logo) {
-            previewElement = `<img src="${currentProgram?.preview ? currentProgram?.preview : channel.logo}" alt="EPG Icon" class="channel-list-preview" onerror="this.outerHTML='<div class=\\'channel-list-logo placeholder\\'>${channel.name.charAt(0).toUpperCase()}</div>';">`;
-        } else {
-            previewElement = `<div class="channel-list-logo placeholder">${channel.name.charAt(0).toUpperCase()}</div>`;
-        }
-
-        // Get current program only
-        let currentText = '';
-        let timeStr = '';
-
-        if (currentProgram) {
-            const start = new Date(currentProgram.start);
-            const stop = new Date(currentProgram.stop);
-            timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
-            currentText = currentProgram.title;
-        }
-
-        item.innerHTML = `
-            ${channel.isStreaming ? '<div class="streaming-indicator"></div>' : ''}
-            ${previewElement}
-            <div class="channel-list-info">
-                <div class="channel-list-name">${channel.name}</div>
-                ${currentText ? `
-                <div class="channel-list-epg">
-                    <div class="channel-list-current">${currentText}</div>
+        const infoHtml = `
+            <div class="channel-epg-info">
+                ${channel.isStreaming ? '<div class="streaming-indicator"></div>' : ''}
+                ${logoHtml}
+                <div class="channel-epg-text">
+                    <div class="channel-epg-name">${channel.name}</div>
+                    <div class="channel-epg-window">Prossime ${EPG_HOURS_AHEAD}h</div>
                 </div>
-                ` : ''}
             </div>
-            ${timeStr ? `<div class="channel-list-time">${timeStr}</div>` : ''}
         `;
 
-        item.addEventListener('click', () => {
+        const programsWrapper = document.createElement('div');
+        programsWrapper.className = 'channel-epg-programs';
+
+        const programs = getProgramsForWindow(channel.tvgId, EPG_HOURS_AHEAD);
+        const now = new Date();
+
+        if (programs.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'epg-empty';
+            empty.textContent = 'Nessun dato EPG disponibile';
+            programsWrapper.appendChild(empty);
+        } else {
+            programs.forEach(program => {
+                const card = document.createElement('div');
+                card.className = 'epg-program-card';
+
+                const start = new Date(program.start);
+                const stop = new Date(program.stop);
+                const isCurrent = now >= start && now <= stop;
+                if (isCurrent) card.classList.add('current');
+
+                const timeStr = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')} - ${stop.getHours().toString().padStart(2, '0')}:${stop.getMinutes().toString().padStart(2, '0')}`;
+
+                const previewUrl = program.preview || channel.logo || '';
+                const media = document.createElement('div');
+                media.className = 'epg-card-media';
+                if (previewUrl) {
+                    const img = document.createElement('img');
+                    img.src = previewUrl;
+                    img.alt = program.title || channel.name;
+                    img.className = 'epg-card-image';
+                    img.onload = () => applyCardAspectClass(card, img);
+                    img.onerror = () => {
+                        media.innerHTML = `<div class="epg-card-placeholder">${initial}</div>`;
+                        card.classList.add('epg-card-square');
+                    };
+                    media.appendChild(img);
+                } else {
+                    media.innerHTML = `<div class="epg-card-placeholder">${initial}</div>`;
+                    card.classList.add('epg-card-square');
+                }
+
+                const info = document.createElement('div');
+                info.className = 'epg-card-info';
+                info.innerHTML = `
+                    <div class="epg-card-time">${timeStr}</div>
+                    <div class="epg-card-title">${program.title || 'No title'}</div>
+                    ${program.category ? `<div class="epg-card-category">${program.category}</div>` : ''}
+                `;
+
+                card.appendChild(media);
+                card.appendChild(info);
+                programsWrapper.appendChild(card);
+            });
+        }
+
+        row.innerHTML = infoHtml;
+        row.appendChild(programsWrapper);
+
+        row.addEventListener('click', () => {
             if (startStreamHandler) startStreamHandler(channel);
         });
 
-        list.appendChild(item);
+        list.appendChild(row);
     });
 
     content.innerHTML = '';

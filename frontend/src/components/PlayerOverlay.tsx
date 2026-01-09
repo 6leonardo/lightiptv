@@ -1,0 +1,452 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Hls from "hls.js";
+import type { ChannelStreamDto, ProgramDto } from "../api";
+import { getSocket } from "../socket";
+import { API_BASE, getStreamStatus, sendHeartbeat, startStreamAPI, stopStreamAPI } from "../api";
+
+const MAX_ATTEMPTS = 30;
+const HEARTBEAT_INTERVAL = 10000;
+
+function formatTime(date: Date) {
+    const h = date.getHours().toString().padStart(2, "0");
+    const m = date.getMinutes().toString().padStart(2, "0");
+    return `${h}:${m}`;
+}
+
+type PlayerOverlayProps = {
+    channel: ChannelStreamDto | null;
+    programs: ProgramDto[];
+    onClose: () => void;
+};
+
+type PlayerStatus =
+    | { state: "idle" }
+    | { state: "loading"; progress: number; tsCount: number; elapsed: number }
+    | { state: "ready" }
+    | { state: "error"; message: string }
+    | { state: "limit"; maxStreams: number; activeStreams: number };
+
+export default function PlayerOverlay({ channel, programs, onClose }: PlayerOverlayProps) {
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const hlsRef = useRef<Hls | null>(null);
+    const heartbeatRef = useRef<number | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
+    const socketRef = useRef(getSocket());
+    const cancelledRef = useRef(false);
+    const pollTimeoutRef = useRef<number | null>(null);
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
+    const startRequestedRef = useRef(false);
+    const [status, setStatus] = useState<PlayerStatus>({ state: "idle" });
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [showLog, setShowLog] = useState(false);
+    const [logLines, setLogLines] = useState<string[]>([]);
+
+    const channelPrograms = useMemo(() => {
+        if (!channel) return { current: null, next: [] as ProgramDto[] };
+        const now = new Date();
+        const list = programs
+            .filter((program) => program.channelId === channel.tvgId)
+            .map((program) => ({ ...program, startDate: new Date(program.start), endDate: new Date(program.end) }))
+            .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+
+        const current = list.find((program) => now >= program.startDate && now <= program.endDate) || null;
+        const next = list.filter((program) => program.startDate > now).slice(0, 5);
+
+        return { current, next };
+    }, [channel, programs]);
+
+    const channelLogo = channel?.logo || null;
+
+    useEffect(() => {
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === "h" || event.key === "H") {
+                setShowLog((prev) => !prev);
+            }
+        };
+        window.addEventListener("keydown", handleKey);
+        return () => window.removeEventListener("keydown", handleKey);
+    }, []);
+
+    useEffect(() => {
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, []);
+
+    useEffect(() => {
+        const handlePageExit = () => {
+            if (!sessionIdRef.current) return;
+            const url = `${API_BASE}/api/stream/stop/${sessionIdRef.current}`;
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(url);
+            } else {
+                fetch(url, { method: "POST", keepalive: true }).catch(() => undefined);
+            }
+        };
+
+        window.addEventListener("beforeunload", handlePageExit);
+        window.addEventListener("pagehide", handlePageExit);
+        return () => {
+            window.removeEventListener("beforeunload", handlePageExit);
+            window.removeEventListener("pagehide", handlePageExit);
+        };
+    }, []);
+
+    useEffect(() => {
+        const socket = socketRef.current;
+        const handleLog = (lines: string[]) => {
+            setLogLines((prev) => {
+                const combined = [...prev, ...lines.map((line) => line.trim())].filter(Boolean);
+                return combined.slice(-50);
+            });
+        };
+        socket.on("ffmpeg-log", handleLog);
+        return () => {
+            socket.off("ffmpeg-log", handleLog);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!channel) return;
+
+        let cancelled = false;
+        cancelledRef.current = false;
+        if (startRequestedRef.current) return;
+        startRequestedRef.current = true;
+        setStatus({ state: "loading", progress: 0, tsCount: 0, elapsed: 0 });
+        setLogLines([]);
+
+        const startStream = async () => {
+            try {
+                const { status: responseStatus, data } = await startStreamAPI(channel.stream, channel.name);
+                if (responseStatus === 429) {
+                    setStatus({ state: "limit", maxStreams: data.maxStreams, activeStreams: data.activeStreams });
+                    return;
+                }
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                sessionIdRef.current = data.sessionId;
+                socketRef.current.emit("join-stream", data.sessionId);
+                startHeartbeat(data.sessionId);
+
+                await pollStreamStatus(data.sessionId, data.m3u8Url);
+            } catch (err) {
+                if (!cancelled) {
+                    setStatus({ state: "error", message: err instanceof Error ? err.message : "Errore avvio stream" });
+                }
+            }
+        };
+
+        startStream();
+
+        return () => {
+            cancelled = true;
+            cancelledRef.current = true;
+            startRequestedRef.current = false;
+            cleanupPlayer();
+        };
+    }, [channel]);
+
+    useEffect(() => {
+        return () => {
+            cleanupPlayer();
+        };
+    }, []);
+
+    const pollStreamStatus = async (sessionId: string, m3u8Url: string) => {
+        let attempts = 0;
+
+        const checkStatus = async () => {
+            try {
+                const result = await getStreamStatus(sessionId);
+                if (cancelledRef.current) return;
+                const tsCount = result.tsCount || 0;
+                setStatus({
+                    state: "loading",
+                    progress: result.progress || 0,
+                    tsCount,
+                    elapsed: result.elapsedTime || 0,
+                });
+
+                const segmentsReady = tsCount >= 3 && result.m3u8Exists;
+                if (segmentsReady) {
+                    if (attempts === 0) {
+                        attempts += 1;
+                        setTimeout(checkStatus, 200);
+                        return;
+                    }
+                    if (cancelledRef.current) return;
+                    setStatus({ state: "ready" });
+                    initializePlayer(m3u8Url);
+                    return;
+                }
+
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                attempts += 1;
+                if (attempts >= MAX_ATTEMPTS) {
+                    throw new Error("Timeout: stream non pronto");
+                }
+
+                pollTimeoutRef.current = window.setTimeout(checkStatus, 1000);
+            } catch (err) {
+                if (!cancelledRef.current) {
+                    setStatus({ state: "error", message: err instanceof Error ? err.message : "Errore streaming" });
+                }
+            }
+        };
+
+        checkStatus();
+    };
+
+    const startHeartbeat = (sessionId: string) => {
+        if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
+        heartbeatRef.current = window.setInterval(() => {
+            sendHeartbeat(sessionId).catch(() => undefined);
+        }, HEARTBEAT_INTERVAL);
+    };
+
+    const initializePlayer = (m3u8Url: string) => {
+        const video = videoRef.current;
+        const wrapper = wrapperRef.current;
+        if (!video || !wrapper) return;
+
+        const resizeVideo = () => {
+            if (!video.videoWidth || !video.videoHeight) return;
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const containerWidth = wrapper.clientWidth;
+            const containerHeight = wrapper.clientHeight;
+            if (!containerWidth || !containerHeight) return;
+
+            const containerRatio = containerWidth / containerHeight;
+            let newWidth: number;
+            let newHeight: number;
+
+            if (videoRatio > containerRatio) {
+                newWidth = containerWidth;
+                newHeight = containerWidth / videoRatio;
+            } else {
+                newHeight = containerHeight;
+                newWidth = containerHeight * videoRatio;
+            }
+
+            video.style.width = `${newWidth}px`;
+            video.style.height = `${newHeight}px`;
+            video.style.maxWidth = "none";
+            video.style.maxHeight = "none";
+        };
+
+        video.addEventListener("loadedmetadata", resizeVideo);
+        video.addEventListener("resize", resizeVideo);
+
+        const observer = new ResizeObserver(() => {
+            window.requestAnimationFrame(resizeVideo);
+        });
+        observer.observe(wrapper);
+        resizeObserverRef.current = observer;
+
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: false,
+                liveSyncDurationCount: 8,
+                liveMaxLatencyDurationCount: 14,
+                maxBufferLength: 60,
+                backBufferLength: 30,
+                manifestLoadingTimeOut: 5000,
+                levelLoadingTimeOut: 5000,
+                fragLoadingTimeOut: 20000,
+            });
+            hlsRef.current = hls;
+            hls.loadSource(m3u8Url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(() => undefined);
+            });
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+                if (!data.fatal) return;
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        hls.destroy();
+                }
+            });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = m3u8Url;
+            video.addEventListener("loadedmetadata", () => {
+                video.play().catch(() => undefined);
+            });
+        }
+    };
+
+    const cleanupPlayer = () => {
+        if (pollTimeoutRef.current) {
+            window.clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+        }
+        if (heartbeatRef.current) {
+            window.clearInterval(heartbeatRef.current);
+            heartbeatRef.current = null;
+        }
+        if (sessionIdRef.current) {
+            socketRef.current.emit("leave-stream", sessionIdRef.current);
+            stopStreamAPI(sessionIdRef.current).catch(() => undefined);
+            sessionIdRef.current = null;
+        }
+        if (hlsRef.current) {
+            hlsRef.current.stopLoad();
+            hlsRef.current.detachMedia();
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
+        if (resizeObserverRef.current) {
+            resizeObserverRef.current.disconnect();
+            resizeObserverRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.removeAttribute("src");
+            videoRef.current.load();
+        }
+    };
+
+    const handleClose = () => {
+        cleanupPlayer();
+        onClose();
+    };
+
+    if (!channel) return null;
+
+    return (
+        <div className="player-overlay">
+            <div className="player-container">
+                <button className="player-close" onClick={handleClose} type="button">
+                    ×
+                </button>
+                <div className="player-video" ref={wrapperRef}>
+                    <video
+                        ref={videoRef}
+                        controls
+                        autoPlay
+                        style={{ visibility: status.state === "ready" ? "visible" : "hidden" }}
+                    />
+                    {status.state === "loading" && (
+                        <div className="player-loading">
+                            <div className="player-loading-text">Preparazione stream...</div>
+                            <div className="player-progress">
+                                <div className="player-progress-bar" style={{ width: `${status.progress}%` }} />
+                            </div>
+                            <div className="player-progress-meta">
+                                {status.tsCount} segments · {status.elapsed}s
+                            </div>
+                        </div>
+                    )}
+                    {status.state === "error" && (
+                        <div className="player-error">
+                            <h3>Errore</h3>
+                            <p>{status.message}</p>
+                        </div>
+                    )}
+                    {status.state === "limit" && (
+                        <div className="player-error">
+                            <h3>Limite raggiunto</h3>
+                            <p>
+                                Max stream: {status.maxStreams} · Attivi: {status.activeStreams}
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {showSidebar && (
+                <aside className="player-epg">
+                    <div className="player-epg-header">
+                        <h4>Programma</h4>
+                        <span>Adesso e prossimi</span>
+                    </div>
+                    <div className="player-epg-body">
+                        {channelPrograms.current ? (
+                            <div className="player-epg-current">
+                                <div className="player-epg-label">NOW PLAYING</div>
+                                {channelPrograms.current.preview &&
+                                    (!channelLogo || channelPrograms.current.preview !== channelLogo) && (
+                                    <img
+                                        className="player-epg-preview"
+                                        src={channelPrograms.current.preview}
+                                        alt={channelPrograms.current.title || "Program"}
+                                    />
+                                )}
+                                <div className="player-epg-title">{channelPrograms.current.title}</div>
+                                <div className="player-epg-time">
+                                    {formatTime(new Date(channelPrograms.current.start))} -{" "}
+                                    {formatTime(new Date(channelPrograms.current.end))}
+                                </div>
+                                {channelPrograms.current.desc && <p>{channelPrograms.current.desc}</p>}
+                            </div>
+                        ) : (
+                            <div className="player-epg-empty">Nessun programma in onda</div>
+                        )}
+
+                        {channelPrograms.next.length > 0 && (
+                            <div className="player-epg-next">
+                                <div className="player-epg-label">UP NEXT</div>
+                                {channelPrograms.next.map((program, index) => (
+                                    <div
+                                        key={`${program.channelId}-${program.start}-${program.end}-${index}`}
+                                        className="player-epg-card"
+                                    >
+                                        {program.preview && (!channelLogo || program.preview !== channelLogo) && (
+                                            <img
+                                                className="player-epg-preview"
+                                                src={program.preview}
+                                                alt={program.title || "Program"}
+                                            />
+                                        )}
+                                        <div className="player-epg-title">{program.title}</div>
+                                        <div className="player-epg-time">
+                                            {formatTime(new Date(program.start))} - {formatTime(new Date(program.end))}
+                                        </div>
+                                        {program.category && <span>{program.category}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </aside>
+            )}
+
+            <div className={`player-log ${showLog ? "open" : "closed"}`}>
+                <div className="player-log-body">
+                    <pre>{logLines.join("\n")}</pre>
+                </div>
+            </div>
+            <button
+                type="button"
+                className={`player-log-tab-btn ${showLog ? "open" : ""}`}
+                onClick={() => setShowLog((prev) => !prev)}
+            >
+                LOG
+            </button>
+
+            <button
+                type="button"
+                className={`player-epg-tab ${showSidebar ? "open" : ""}`}
+                onClick={() => setShowSidebar((prev) => !prev)}
+            >
+                EPG
+            </button>
+        </div>
+    );
+}

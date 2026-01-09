@@ -21,6 +21,7 @@ class Stream {
 	pool: StreamService;
 	intervalHandle?: NodeJS.Timeout;
 
+
 	constructor(channelName: string, pool: StreamService, sessionId: string) {
 		this.channelName = channelName;
 		this.pool = pool;
@@ -80,11 +81,9 @@ class Stream {
 			this.log(`\n\n--------------------- EXITED ${new Date().toISOString()} CODE: ${code} SIGNAL: ${signal} ---------------------\n`);
 			this.logStream?.end();
 			this.logStream = null;
-			fs.promises.unlink(this.streamFilename).catch(err => {
-				console.error('Error deleting stream file:', err);
-			});
-			fs.promises.unlink(this.streamFilename + '.pid').catch(err => {
-				console.error('Error deleting pid file:', err);
+			// remove dir not files
+			fs.promises.rmdir(this.streamDir, { recursive: true }).catch(err => {
+				console.error('Error removing stream directory:', err);
 			});
 			this.process = null;
 			if (this.intervalHandle) {
@@ -96,23 +95,34 @@ class Stream {
 
 		// check is running and pingged every STREAM_INACTIVITY_TIMEOUT / 2
 		this.intervalHandle = setInterval(() => {
-			if (this.process && this.process.pid && !this.process.exitCode) {
-				if (!this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
-					this.log(`\n\n--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------\n`);
-					clearInterval(this.intervalHandle);
-					this.intervalHandle = undefined;
-					this.close();
-				}
+			if (!this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
+				this.log(`\n\n--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------\n`);
+				clearInterval(this.intervalHandle);
+				this.intervalHandle = undefined;
+				this.close();
 			}
 		}, CONFIG.STREAM_INACTIVITY_TIMEOUT / 2);
 	}
 
 	close() {
-		if (this.process && this.process.pid && !this.process.exitCode)
-			this.process.kill('SIGKILL');
+		console.log(`Closing stream for channel ${this.channelName}`);
+		if (this.intervalHandle) {
+			clearInterval(this.intervalHandle);
+			this.intervalHandle = undefined;
+		}
+		if (this.process && this.process.pid) {
+			console.log(`Killing ffmpeg process with PID ${this.process.pid}`);
+			try {
+				this.process.kill('SIGKILL');
+			} catch (error) {
+				console.error(`Error killing ffmpeg process ${this.process.pid}:`, (error as Error).message);
+			}
+		}
+
 	}
 
 	ping() {
+		console.log(`Ping received for stream ${this.channelName}`);
 		if (this.startTime)
 			this.lastAccess = new Date();
 	}
@@ -122,7 +132,7 @@ class Stream {
 
 		try {
 			const files = await fs.promises.readdir(this.streamDir);
-			const tsFiles = files.filter(f => f.endsWith('.ts')).sort();
+			const tsFiles = files.filter(f => !/m3u8(\.pid)?$/.test(f)).sort();
 			const m3u8Exists = files.includes('playlist.m3u8');
 			const elapsedTime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
 			return { files, tsFiles, m3u8Exists, elapsedTime };
@@ -167,10 +177,6 @@ class StreamService {
 		}
 
 		stream = new Stream(channelName, this, sessionId);
-		// check if stream is closed or failed to start
-		if (stream && !stream.process) {
-			return null;
-		}
 		try {
 			stream.open();
 			this.streams.set(channelName, stream);
@@ -209,13 +215,13 @@ class StreamService {
 				// remove directory
 				try {
 					await fs.promises.rm(dirPath, { recursive: true, force: true });
-					console.log(`Removed leftover stream directory: ${dirPath}`);					
+					console.log(`Removed leftover stream directory: ${dirPath}`);
 				}
 				catch (error) {
 					console.error(`Error removing stream directory ${dirPath}:`, (error as Error).message);
 				}
 			}
-		}	
+		}
 	}
 }
 

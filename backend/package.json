@@ -1,0 +1,55 @@
+{
+  "name": "lightiptv",
+  "version": "1.0.0",
+  "description": "Lightweight web IPTV viewer for Threadfin",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node --loader ts-node/esm app/index.ts",
+    "debug": "node --inspect --loader ts-node/esm app/index.ts",
+    "dev": "nodemon",
+    "build": "tsc",
+    "docker:build": "docker build -t astevani/lightiptv:$(node -p \"require('./package.json').version\") -t astevani/lightiptv:latest .",
+    "docker:push": "docker push astevani/lightiptv --all-tags",
+    "docker:release": "npm run docker:build && npm run docker:push"
+  },
+  "keywords": [
+    "iptv",
+    "m3u",
+    "express",
+    "threadfin",
+    "hls",
+    "ffmpeg"
+  ],
+  "author": "astevani",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/socket.io": "^3.0.2",
+    "@types/socket.io-client": "^1.4.36",
+    "@types/xml2js": "^0.4.14",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "ws": "^8.19.0"
+  },
+  "nodemonConfig": {
+    "watch": [
+      "app"
+    ],
+    "ext": "ts",
+    "ignore": [
+      "app/public/**"
+    ],
+    "exec": "node --loader ts-node/esm ./app/index.ts"
+  }
+}

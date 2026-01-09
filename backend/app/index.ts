@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
@@ -8,6 +9,7 @@ import { streamService } from './services/stream.js';
 import { initDirs } from './services/dirs.js';
 import channelsRouter from './routes/channels.js';
 import epgRouter from './routes/epg.js';
+import epgGridRouter from './routes/epg-grid.js';
 import streamRouter from './routes/stream.js';
 import URL from 'url';
 
@@ -25,14 +27,42 @@ await channelService.updateChannels();
 console.log('Channels initialized');
 
 const app = express();
+const frontendDist = path.join(__dirname, 'public', 'dist');
+const publicDir = path.join(__dirname, 'public');
+const hasFrontend = fs.existsSync(frontendDist);
 
-
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// CORS solo se non c'è il frontend (dev mode con Vite separato)
+if (!hasFrontend) {
+	app.use((_req, res, next) => {
+		res.header('Access-Control-Allow-Origin', '*');
+		res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+		res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+		if (_req.method === 'OPTIONS') {
+			return res.sendStatus(204);
+		}
+		next();
+	});
+}
+
+// Serve public assets (images, cached files, etc.)
+app.use('/cached', express.static(path.join(publicDir, 'cached')));
+app.use('/images', express.static(path.join(publicDir, 'images')));
+
+// API routes
 app.use('/api', channelsRouter);
 app.use('/api', epgRouter);
+app.use('/api', epgGridRouter);
 app.use('/api/stream', streamRouter);
+
+// Serve frontend in production
+if (hasFrontend) {
+	app.use(express.static(frontendDist));
+	app.get('*', (_req, res) => {
+		res.sendFile(path.join(frontendDist, 'index.html'));
+	});
+}
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server);

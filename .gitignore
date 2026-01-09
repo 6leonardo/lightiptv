@@ -1,8 +1,14 @@
+# Node
 node_modules/
+dist/
+# Env & log
 .env
 *.log
 *.backup
-.DS_Store
-app/public/cached/*
-app/data/*
-docs/*
+
+# Backend generated / runtime data
+backend/app/public/cached/
+backend/app/data/
+
+# Docs generati
+backend/docs/

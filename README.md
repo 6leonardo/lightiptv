@@ -151,6 +151,16 @@ docker-compose down
 
 Open browser: `http://localhost:3005`
 
+## 🎛 Frontend (Vite + React)
+
+The frontend lives in `frontend/` and uses Planby for the EPG grid. When `frontend/dist` exists, the server serves it automatically.
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 
 ## 📸 Screenshots
 
