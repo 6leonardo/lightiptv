@@ -20,11 +20,12 @@ body {
   font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
   background: radial-gradient(circle at top, #192133 0%, #07080c 55%);
   color: var(--text);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .app-shell {
@@ -32,22 +33,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .app-main {
-  display: grid;
-  grid-template-columns: 320px 1fr;
+  display: flex;
   gap: 16px;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-epg-panel {
+  flex: 1;
   min-width: 0;
+  height: 100%;
+  position: relative;
 }
 
 .app-main-full {
-  grid-template-columns: 1fr;
+  /* No special override needed for flex unless direction changes, but defaults are fine */
 }
 
 .app-header {
@@ -200,8 +205,8 @@ body {
   min-height: 60vh;
   background: var(--panel);
   border-radius: 18px;
-  border: 1px solid var(--border);
-  padding: 12px;
+  /*border: 1px solid var(--border);*/
+  padding: 0px;
 }
 
 .epg-timeline {

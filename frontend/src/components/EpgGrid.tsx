@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Epg,
   Layout,
@@ -26,7 +26,7 @@ import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 const HOUR_MS = 60 * 60 * 1000;
 const HOUR_WIDTH = 260; // 4.33px al minuto
 const DAY_WIDTH = 24 * HOUR_WIDTH;
-const SIDEBAR_WIDTH = 240;
+const SIDEBAR_WIDTH = 100;
 const ITEM_HEIGHT = 80;
 
 type EpgGridProps = {
@@ -92,23 +92,36 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
   );
 
   const epgPrograms = useMemo<PlanbyProgram[]>(
-    () =>
-      programs.map((program, index) => {
-        const since = new Date(program.start).toISOString();
-        const till = new Date(program.end || program.start).toISOString();
-        return {
-          id: `${program.channelId}-${since}-${till}-${index}`,
-          channelUuid: program.channelId,
-          title: program.title || 'Senza titolo',
-          since,
-          till,
-          image: program.preview || '',
-          desc: program.desc,
-          category: program.category,
-          preview: program.preview,
-          channelId: program.channelId
-        };
-      }),
+    () => {
+      const now = new Date();
+      // Filtra solo programmi nell'intervallo: adesso - 2h fino a adesso + 24h
+      const rangeStart = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const rangeEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      return programs
+        .filter((program) => {
+          const start = new Date(program.start);
+          const end = new Date(program.end || program.start);
+          // Verifica sovrapposizione temporale
+          return start < rangeEnd && end > rangeStart;
+        })
+        .map((program, index) => {
+          const since = new Date(program.start).toISOString();
+          const till = new Date(program.end || program.start).toISOString();
+          return {
+            id: `${program.channelId}-${since}-${till}-${index}`,
+            channelUuid: program.channelId,
+            title: program.title || 'Senza titolo',
+            since,
+            till,
+            image: program.preview || '',
+            desc: program.desc,
+            category: program.category,
+            preview: program.preview,
+            channelId: program.channelId
+          };
+        });
+    },
     [programs]
   );
 
@@ -160,9 +173,9 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
           if (event.key === 'Enter') onStart?.(data.channelUuid);
         }}
       >
-        <ProgramContent width={styles.width} isLive={isLive}>
+        <ProgramContent width={styles.width} isLive={isLive} style={{ padding: '8px' }}>
             <ProgramFlex>
-            {isLive && isMinWidth && data.image && <ProgramImage src={data.image} alt="Preview" />}
+            {isMinWidth && data.image && <ProgramImage src={data.image} alt="Preview" style={{ marginRight: '8px' }} />}
             <ProgramStack>
               <ProgramTitle>{data.title || 'Senza titolo'}</ProgramTitle>
               <ProgramText>
@@ -208,7 +221,7 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
   };
 
   return (
-    <div className="epg-grid" style={{ height: '80vh', width: '100%' }}>
+    <div className="epg-grid" style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
       <Epg {...getEpgProps()}>
         <Layout
           {...getLayoutProps()}
