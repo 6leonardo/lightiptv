@@ -1,4 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import type { KeyboardEvent } from 'react';
+import type { CSSProperties } from 'react';
 import {
   Epg,
   Layout,
@@ -23,7 +25,6 @@ import {
 import type { ChannelDto, ProgramDto } from '../api';
 import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
-const HOUR_MS = 60 * 60 * 1000;
 const HOUR_WIDTH = 260; // 4.33px al minuto
 const DAY_WIDTH = 24 * HOUR_WIDTH;
 const SIDEBAR_WIDTH = 100;
@@ -55,32 +56,32 @@ type PlanbyProgram = {
   channelId: string;
 };
 
-const formatTime = (date: Date) => {
-  const h = date.getHours().toString().padStart(2, '0');
-  const m = date.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
+type ProgramRenderProps = {
+  program: {
+    data: PlanbyProgram;
+  };
+};
+
+type TimelineProps = {
+  dayWidth: number;
+  sidebarWidth: number;
+  isSidebar: boolean;
+  hourWidth: number;
+  numberOfHoursInDay: number;
+  offsetStartHoursRange: number;
+  isBaseTimeFormat: boolean;
+};
+
+type ChannelRenderProps = {
+  channel: {
+    uuid: string;
+    name: string;
+    logo: string | null;
+    position: CSSProperties;
+  };
 };
 
 export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartChannel }: EpgGridProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 600 });
-
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-
-    const updateSize = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      setSize({ width: rect.width, height: rect.height });
-    };
-
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(containerRef.current);
-
-    return () => observer.disconnect();
-  }, []);
-
   const epgChannels = useMemo<PlanbyChannel[]>(
     () =>
       channels.map((channel) => ({
@@ -94,9 +95,9 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
   const epgPrograms = useMemo<PlanbyProgram[]>(
     () => {
       const now = new Date();
-      // Filtra solo programmi nell'intervallo: adesso - 2h fino a adesso + 24h
+      // Filtra solo programmi nell'intervallo: adesso - 2h fino a adesso + hoursAhead
       const rangeStart = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      const rangeEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const rangeEnd = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
 
       return programs
         .filter((program) => {
@@ -122,19 +123,19 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
           };
         });
     },
-    [programs]
+    [programs, hoursAhead]
   );
 
   const [startDate, endDate] = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1); // 24h esatte
-    
-    return [today.toISOString(), tomorrow.toISOString()];
-  }, []);
+    const end = new Date(today);
+    end.setHours(end.getHours() + Math.max(1, hoursAhead));
 
-  const { getEpgProps, getLayoutProps, onScrollToNow } = useEpg({
+    return [today.toISOString(), end.toISOString()];
+  }, [hoursAhead]);
+
+  const { getEpgProps, getLayoutProps } = useEpg({
     channels: epgChannels,
     epg: epgPrograms,
     startDate,
@@ -158,8 +159,11 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
     }
   });
 
-  const ProgramItem = ({ program, onStart, ...rest }: any) => {
-    const { styles, formatTime, isLive, isMinWidth } = useProgram({ program, ...rest });
+  const ProgramItem = ({
+    program,
+    onStart
+  }: ProgramRenderProps & { onStart?: (channelId: string) => void }) => {
+    const { styles, formatTime, isLive } = useProgram({ program });
     const { data } = program;
 
     return (
@@ -169,13 +173,19 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
         role="button"
         tabIndex={0}
         onClick={() => onStart?.(data.channelUuid)}
-        onKeyDown={(event) => {
+        onKeyDown={(event: KeyboardEvent) => {
           if (event.key === 'Enter') onStart?.(data.channelUuid);
         }}
       >
-        <ProgramContent width={styles.width} isLive={isLive} style={{ padding: '8px' }}>
-            <ProgramFlex>
-            {isMinWidth && data.image && <ProgramImage src={data.image} alt="Preview" style={{ marginRight: '8px' }} />}
+        <ProgramContent width={styles.width} isLive={isLive} style={{ padding: '0px' }}>
+          <ProgramFlex>
+            {data.image && (
+              <ProgramImage
+                src={data.image}
+                alt={data.title}
+                className="epg-program-image"
+              />
+            )}
             <ProgramStack>
               <ProgramTitle>{data.title || 'Senza titolo'}</ProgramTitle>
               <ProgramText>
@@ -189,11 +199,9 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
     );
   };
 
-  const Timeline = (props: any) => {
-    const { time, dividers, formatTime } = useTimeline(
-      props.numberOfHoursInDay,
-      props.isBaseTimeFormat
-    );
+  const Timeline = (props: TimelineProps) => {
+    const { numberOfHoursInDay, isBaseTimeFormat } = props;
+    const { time, dividers, formatTime } = useTimeline(numberOfHoursInDay, isBaseTimeFormat);
 
     const renderDividers = () =>
       dividers.map((_, index) => (
@@ -201,13 +209,13 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
       ));
 
     const renderTime = (index: number) => (
-      <TimelineBox key={index} width={props.hourWidth}>
-        <TimelineTime>
-          {formatTime(index + props.offsetStartHoursRange).toLowerCase()}
-        </TimelineTime>
-        <TimelineDividers>{renderDividers()}</TimelineDividers>
-      </TimelineBox>
-    );
+        <TimelineBox key={index} width={props.hourWidth}>
+          <TimelineTime>
+            {formatTime(index + props.offsetStartHoursRange).toLowerCase()}
+          </TimelineTime>
+          <TimelineDividers>{renderDividers()}</TimelineDividers>
+        </TimelineBox>
+      );
 
     return (
       <TimelineWrapper
@@ -225,25 +233,23 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
       <Epg {...getEpgProps()}>
         <Layout
           {...getLayoutProps()}
-          renderTimeline={(props) => (
-             <Timeline 
-                 {...props} 
-                 // Force props if missing
-                 dayWidth={DAY_WIDTH} 
-                 sidebarWidth={SIDEBAR_WIDTH}
-                 isSidebar={true}
-                 // Calculate hourWidth if missing (Planby should provide it but let's be safe)
-                 hourWidth={HOUR_WIDTH}
-             />
+          renderTimeline={(props: TimelineProps) => (
+            <Timeline
+              {...props}
+              dayWidth={props.dayWidth || DAY_WIDTH}
+              sidebarWidth={props.sidebarWidth ?? SIDEBAR_WIDTH}
+              isSidebar={props.isSidebar ?? true}
+              hourWidth={props.hourWidth || HOUR_WIDTH}
+            />
           )}
-          renderChannel={({ channel }) => (
+          renderChannel={({ channel }: ChannelRenderProps) => (
             <ChannelBox
               {...channel.position}
               key={channel.uuid}
                 onClick={() => onStartChannel?.(channel.uuid)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(event) => {
+                onKeyDown={(event: KeyboardEvent) => {
                   if (event.key === 'Enter') onStartChannel?.(channel.uuid);
                 }}
               >
@@ -259,14 +265,13 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
                 )}
               </ChannelBox>
             )}
-            renderProgram={({ program, ...rest }) => {
+            renderProgram={({ program }: ProgramRenderProps) => {
               const key = `${program.data.channelUuid}-${program.data.since}-${program.data.till}-${program.data.title || ''}`;
               return (
                 <ProgramItem
                   key={key}
                   program={program}
                   onStart={onStartChannel}
-                  {...rest}
                 />
               );
             }}
