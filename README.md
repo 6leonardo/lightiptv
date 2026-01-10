@@ -167,10 +167,19 @@ npm run build
 ## 📸 Screenshots
 
 ### Main Interface
-![LightIPTV Main Interface](images/screenshot.jpeg)
+![LightIPTV Player Interface](images/screenshoot.jpeg)
 
 ### Debug Mode (Press H)
-![LightIPTV Debug Mode with FFmpeg Log](images/screenshot-debug.jpeg)
+![LightIPTV Player Debug Mode with FFmpeg Log](images/screenshoot-debug.jpeg)
+
+### Channels
+![LightIPTV Channel list](images/channels.jpeg)
+
+### EPG
+![LightIPTV EPG](images/epg.jpeg)
+
+### Now Playing
+![LightIPTV Now Playing list](images/nowplaying.jpeg)
 
 ## 🔍 Debug with H key
 
