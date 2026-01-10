@@ -1,10 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { Server as SocketIOServer } from 'socket.io';
 import { channelService } from './channels.js';
 import CONFIG from '../config/index.js';
 import getFFmpegArgs from './ffmpeg-profile.js';
+import { resolveStreamUrl } from './detect.js';
+import { Mutex } from 'async-mutex';
 //import getFFmpegArgs from './ffmpeg-detect.js';
 
 function sanitizeChannelName(channelName: string): string {
@@ -15,13 +17,14 @@ class Stream {
 	logStream: fs.WriteStream | null = null;
 	socket: SocketIOServer | null = null;
 	sessionId: string = '';
-	process: ChildProcessWithoutNullStreams | null = null;
+	ffmpegProcess: ChildProcess | null = null;
+	streamlinkProcess: ChildProcess | null = null;
 	channelName: string;
 	startTime?: Date;
 	lastAccess?: Date;
 	pool: StreamService;
 	intervalHandle?: NodeJS.Timeout;
-
+	killed: boolean = false;
 
 	constructor(channelName: string, pool: StreamService, sessionId: string) {
 		this.channelName = channelName;
@@ -30,12 +33,15 @@ class Stream {
 		this.sessionId = sessionId;
 	}
 
-	log(text: string) {
+	log(source: 'server' | 'ffmpeg' | 'streamlink', text: string) {
+		// a spazi fissi
+		const line = `[${source}]\t${new Date().toISOString()}\t${text.replace(/\r?\n/gm, '\t\t')}`.replace(/\t\t$/, '');
 		if (!this.logStream) {
 			const logFile = path.join(CONFIG.LOGS.DIR, `${sanitizeChannelName(this.channelName)}.log`);
 			this.logStream = fs.createWriteStream(logFile, { flags: 'a' });
 		}
-		this.logStream.write(text);
+
+		this.logStream.write(line + '\n');
 		if (this.socket && this.sessionId) {
 			this.socket.to(this.sessionId).emit('ffmpeg-log', [text]);
 		}
@@ -53,73 +59,87 @@ class Stream {
 		return path.join(CONFIG.STREAMS.DIR_WEB, sanitizeChannelName(this.channelName), 'playlist.m3u8');
 	}
 
-	open() {
+	async open() {
 		const channel = channelService.getChannelByName(this.channelName);
 		if (!(channel && channel.stream))
 			throw new Error('Channel not found');
 
-		const streamUrl = channel.stream;
-		const ffmpegArgs = getFFmpegArgs(this.streamFilename, streamUrl);
 		fs.mkdirSync(this.streamDir, { recursive: true });
-		const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+		const streamUrl = await resolveStreamUrl(channel.stream);
+		const ffmpegArgs = getFFmpegArgs(this.streamFilename, "pipe:0")   //getFFmpegArgs(this.streamFilename, streamUrl);
+		this.streamlinkProcess = spawn('streamlink', [streamUrl, 'best', '-O'], { stdio: ['ignore', 'pipe', 'pipe'] });
+		this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-		if (!ffmpeg || !ffmpeg.pid)
+		this.streamlinkProcess.stdout!.pipe(this.ffmpegProcess.stdin!);
+		//const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+
+		if (!this.ffmpegProcess.pid || !this.streamlinkProcess.pid)
 			throw new Error('Failed to start ffmpeg process');
 
-		fs.writeFileSync(this.streamFilename + '.pid', ffmpeg.pid.toString());
+		fs.writeFileSync(this.streamFilename + '.pid', `${this.ffmpegProcess.pid.toString()}\n${this.streamlinkProcess.pid.toString()}\n`);
 
 		this.startTime = new Date();
 		this.lastAccess = new Date();
-		this.process = ffmpeg;
 
-		this.log(`\n\n--------------------- STARTED ${new Date().toISOString()} ---------------------\n`)
+		this.log('server', `--------------------- STARTED ${new Date().toISOString()} ---------------------`)
 
-		ffmpeg.stderr.on('data', (data) => {
-			this.log(data.toString());
+		this.streamlinkProcess.stderr?.on('data', (data) => {
+			this.log('streamlink', data.toString());
 		});
 
-		ffmpeg.on('exit', (code, signal) => {
-			this.log(`\n\n--------------------- EXITED ${new Date().toISOString()} CODE: ${code} SIGNAL: ${signal} ---------------------\n`);
-			this.logStream?.end();
-			this.logStream = null;
-			// remove dir not files
-			fs.promises.rm(this.streamDir, { recursive: true, force: true }).catch(err => {
-				console.error('Error removing stream directory:', err);
-			});
-			this.process = null;
-			if (this.intervalHandle) {
-				clearInterval(this.intervalHandle);
-				this.intervalHandle = undefined;
-			}
-			this.pool.endStream(this.channelName);
+		this.streamlinkProcess.on('exit', (code, signal) => {
+			this.kill({ code, signal });
+		});
+
+		this.ffmpegProcess.stdout?.on('data', (data) => {
+			this.log('ffmpeg', data.toString());
+		});
+
+		this.ffmpegProcess.stderr?.on('data', (data) => {
+			this.log('ffmpeg', data.toString());
+		});
+
+		this.ffmpegProcess.on('exit', (code, signal) => {
+			this.kill({ code, signal });
 		});
 
 		// check is running and pingged every STREAM_INACTIVITY_TIMEOUT / 2
 		this.intervalHandle = setInterval(() => {
 			if (!this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
-				this.log(`\n\n--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------\n`);
-				clearInterval(this.intervalHandle);
-				this.intervalHandle = undefined;
-				this.close();
+				this.log('server', `--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------`);
+				this.kill({ why: 'inactivity timeout' });
 			}
 		}, CONFIG.STREAM_INACTIVITY_TIMEOUT / 2);
 	}
 
-	close() {
-		console.log(`Closing stream for channel ${this.channelName}`);
+
+	private kill({ code, signal, why }: { code?: number | null; signal?: NodeJS.Signals | null; why?: string }) {
+		if (this.killed)
+			return;
+		this.killed = true;
+		console.log(`Killing stream for channel ${this.channelName} ${why ? `(${why})` : ''}`);
 		if (this.intervalHandle) {
 			clearInterval(this.intervalHandle);
 			this.intervalHandle = undefined;
 		}
-		if (this.process && this.process.pid) {
-			console.log(`Killing ffmpeg process with PID ${this.process.pid}`);
-			try {
-				this.process.kill('SIGKILL');
-			} catch (error) {
-				console.error(`Error killing ffmpeg process ${this.process.pid}:`, (error as Error).message);
-			}
-		}
+		if (this.ffmpegProcess && this.ffmpegProcess.exitCode === null && this.ffmpegProcess.pid)
+			this.ffmpegProcess.kill('SIGKILL');
 
+		if (this.streamlinkProcess && this.streamlinkProcess.exitCode === null && this.streamlinkProcess.pid)
+			this.streamlinkProcess.kill('SIGKILL');
+
+		this.pool.endStream(this.channelName);
+		this.log('server', `--------------------- EXITED ${new Date().toISOString()} ${why ? `WHY: ${why}` : `CODE: ${code} SIGNAL: ${signal}`} ---------------------`);
+		this.logStream?.end();
+		this.logStream = null;
+		fs.promises.rm(this.streamDir, { recursive: true, force: true }).catch(err => {
+			console.error('Error removing stream directory:', err);
+		});
+
+	}
+
+	close() {
+		this.kill({ why: 'closed by user' });
 	}
 
 	ping() {
@@ -148,6 +168,7 @@ class StreamService {
 	streams: Map<string, Stream> = new Map<string, Stream>();
 	maxStreams: number = CONFIG.MAX_STREAMS;
 	socket: SocketIOServer | null = null;
+	mutex = new Mutex();
 
 	setSocket(socket: SocketIOServer) {
 		this.socket = socket;
@@ -163,7 +184,7 @@ class StreamService {
 		return null;
 	}
 
-	getStream(channelName: string, sessionId: string): Stream | null {
+	async getStream(channelName: string, sessionId: string): Promise<Stream | null> {
 		let stream = this.streams.get(channelName);
 
 		if (stream) {
@@ -176,12 +197,15 @@ class StreamService {
 			return null;
 		}
 
+		const release = await this.mutex.acquire();
 		stream = new Stream(channelName, this, sessionId);
 		try {
-			stream.open();
+			await stream.open();
 			this.streams.set(channelName, stream);
+			release();
 			return stream;
 		} catch (error) {
+			release();
 			console.error('Error opening stream for', channelName, ':', (error as Error).message);
 			return null;
 		}
@@ -201,17 +225,19 @@ class StreamService {
 				const dirPath = path.join(streamsDir, dirent.name);
 				const pidFile = path.join(dirPath, 'playlist.m3u8.pid');
 				// kill ffmpeg process if still running and remove directory
-				try {
-					const pidData = await fs.promises.readFile(pidFile, 'utf-8');
-					const pid = parseInt(pidData, 10);
-					if (!isNaN(pid)) {
-						process.kill(pid, 0); // check if process is running
-						process.kill(pid, 'SIGKILL'); // kill the process
-						console.log(`Killed leftover ffmpeg process with PID ${pid}`);
+				const pidData = await fs.promises.readFile(pidFile, 'utf-8');
+				const pids = pidData.split('\n').map(line => parseInt(line, 10));
+				for (const pid of pids)
+					try {
+						if (!isNaN(pid)) {
+							process.kill(pid, 0); // check if process is running
+							process.kill(pid, 'SIGKILL'); // kill the process
+							console.log(`Killed leftover ffmpeg process with PID ${pid}`);
+						}
+					} catch (error) {
+						// process not running or pid file not found
 					}
-				} catch (error) {
-					// process not running or pid file not found
-				}
+
 				// remove directory
 				try {
 					await fs.promises.rm(dirPath, { recursive: true, force: true });

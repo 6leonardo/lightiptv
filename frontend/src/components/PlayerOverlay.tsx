@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { ChannelStreamDto, ProgramDto } from "../api";
 import { getSocket } from "../socket";
 import { API_BASE, getStreamStatus, sendHeartbeat, startStreamAPI, stopStreamAPI } from "../api";
 
-const MAX_ATTEMPTS = 30;
-const HEARTBEAT_INTERVAL = 10000;
+const MAX_ATTEMPTS = 60;
+const HEARTBEAT_INTERVAL = 5000;
 
 function formatTime(date: Date) {
     const h = date.getHours().toString().padStart(2, "0");
@@ -40,7 +40,9 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     const [status, setStatus] = useState<PlayerStatus>({ state: "idle" });
     const [showSidebar, setShowSidebar] = useState(false);
     const [showLog, setShowLog] = useState(false);
+    const [showDebug, setShowDebug] = useState(false);
     const [logLines, setLogLines] = useState<string[]>([]);
+    const [bufferInfo, setBufferInfo] = useState<{ ahead: number; behind: number; buffered: number; currentSegment: number; totalSegments: number } | null>(null);
 
     const channelPrograms = useMemo(() => {
         if (!channel) return { current: null, next: [] as ProgramDto[] };
@@ -110,11 +112,25 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     }, []);
 
     useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            if (e.key === 'd' || e.key === 'D') {
+                setShowDebug((prev) => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyPress);
+        return () => {
+            window.removeEventListener('keydown', handleKeyPress);
+        };
+    }, []);
+
+    useEffect(() => {
         if (!channel) return;
 
+        // Previeni doppia esecuzione se già in corso
+        if (startRequestedRef.current) return;
+        
         let cancelled = false;
         cancelledRef.current = false;
-        if (startRequestedRef.current) return;
         startRequestedRef.current = true;
         setStatus({ state: "loading", progress: 0, tsCount: 0, elapsed: 0 });
         setLogLines([]);
@@ -122,6 +138,8 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
         const startStream = async () => {
             try {
                 const { status: responseStatus, data } = await startStreamAPI(channel.stream, channel.name);
+                if (cancelled) return; // Check se nel frattempo è stato cancellato
+                
                 if (responseStatus === 429) {
                     setStatus({ state: "limit", maxStreams: data.maxStreams, activeStreams: data.activeStreams });
                     return;
@@ -152,12 +170,6 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
         };
     }, [channel]);
 
-    useEffect(() => {
-        return () => {
-            cleanupPlayer();
-        };
-    }, []);
-
     const pollStreamStatus = async (sessionId: string, m3u8Url: string) => {
         let attempts = 0;
 
@@ -173,8 +185,7 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
                     elapsed: result.elapsedTime || 0,
                 });
 
-                const segmentsReady = tsCount >= 3 && result.m3u8Exists;
-                if (segmentsReady) {
+                if (result.ready) {
                     if (attempts === 0) {
                         attempts += 1;
                         setTimeout(checkStatus, 200);
@@ -253,13 +264,13 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
         resizeObserverRef.current = observer;
 
         if (Hls.isSupported()) {
+            const SEGMENTS_BACK = 3; // Start 3 segments back from live edge
+            
             const hls = new Hls({
                 enableWorker: true,
                 lowLatencyMode: false,
-                liveSyncDurationCount: 8,
-                liveMaxLatencyDurationCount: 14,
-                maxBufferLength: 60,
-                backBufferLength: 30,
+                maxBufferLength: 30,
+                backBufferLength: 10,
                 manifestLoadingTimeOut: 5000,
                 levelLoadingTimeOut: 5000,
                 fragLoadingTimeOut: 20000,
@@ -267,22 +278,97 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
             hlsRef.current = hls;
             hls.loadSource(m3u8Url);
             hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            
+            // Monitor buffer position
+            const bufferMonitor = setInterval(() => {
+                if (!hls.media) return;
+                
+                const currentTime = hls.media.currentTime;
+                const buffered = hls.media.buffered;
+                
+                // Calculate buffered ahead
+                let bufferAhead = 0;
+                for (let i = 0; i < buffered.length; i++) {
+                    if (buffered.start(i) <= currentTime && buffered.end(i) > currentTime) {
+                        bufferAhead = buffered.end(i) - currentTime;
+                        break;
+                    }
+                }
+                
+                // Calculate distance from live edge and current segment
+                const levels = hls.levels;
+                const currentLevel = hls.currentLevel;
+                let liveEdge = 0;
+                let currentSegment = 0;
+                let totalSegments = 0;
+                
+                if (levels && levels[currentLevel]?.details) {
+                    const details = levels[currentLevel].details;
+                    if (details && details.edge !== undefined) {
+                        liveEdge = details.edge - currentTime;
+                    }
+                    
+                    // Find current segment
+                    totalSegments = details.fragments.length;
+                    for (let i = 0; i < details.fragments.length; i++) {
+                        const frag = details.fragments[i];
+                        if (frag.start <= currentTime && frag.start + frag.duration > currentTime) {
+                            currentSegment = i + 1; // 1-based for display
+                            break;
+                        }
+                    }
+                }
+                
+                setBufferInfo({
+                    ahead: bufferAhead,
+                    behind: liveEdge,
+                    buffered: bufferAhead,
+                    currentSegment,
+                    totalSegments
+                });
+            }, 1000);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+                if (data.levels.length > 0) {
+                    const targetDuration = data.levels[0].details?.targetduration;
+                    
+                    if (targetDuration) {
+                        // Calculate seconds to go back from live edge
+                        const secondsBack = SEGMENTS_BACK * targetDuration;
+                        
+                        console.log(`[HLS] Starting ${SEGMENTS_BACK} segments (~${secondsBack}s) back from live edge`);
+                    }
+                }
                 video.play().catch(() => undefined);
             });
+            
             hls.on(Hls.Events.ERROR, (_event, data) => {
+                console.log('[HLS] Error:', data.type, data.details, data.fatal);
+                
                 if (!data.fatal) return;
+                
                 switch (data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.log('[HLS] Fatal network error, restarting...');
                         hls.startLoad();
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.log('[HLS] Fatal media error, recovering...');
                         hls.recoverMediaError();
                         break;
                     default:
+                        console.log('[HLS] Unrecoverable error, destroying player');
+                        clearInterval(bufferMonitor);
                         hls.destroy();
                 }
             });
+            
+            // Cleanup buffer monitor
+            const originalDestroy = hls.destroy.bind(hls);
+            hls.destroy = () => {
+                clearInterval(bufferMonitor);
+                originalDestroy();
+            };
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
             video.src = m3u8Url;
             video.addEventListener("loadedmetadata", () => {
@@ -351,6 +437,24 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
                             <div className="player-progress-meta">
                                 {status.tsCount} segments · {status.elapsed}s
                             </div>
+                        </div>
+                    )}
+                    {status.state === "ready" && bufferInfo && showDebug && (
+                        <div className="player-buffer-info">
+                            <div className="buffer-stat">
+                                <span className="buffer-label">Segment:</span>
+                                <span className="buffer-value">{bufferInfo.currentSegment}/{bufferInfo.totalSegments}</span>
+                            </div>
+                            <div className="buffer-stat">
+                                <span className="buffer-label">Buffer:</span>
+                                <span className="buffer-value">{bufferInfo.buffered.toFixed(1)}s</span>
+                            </div>
+                            {bufferInfo.behind > 0 && (
+                                <div className="buffer-stat">
+                                    <span className="buffer-label">Latency:</span>
+                                    <span className="buffer-value">{bufferInfo.behind.toFixed(1)}s</span>
+                                </div>
+                            )}
                         </div>
                     )}
                     {status.state === "error" && (

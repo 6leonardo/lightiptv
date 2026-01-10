@@ -8,12 +8,10 @@ A lightweight web IPTV viewer designed to work in cascade with **Threadfin**, pe
 
 ## 🔧 Requirements: Threadfin
 
-LightIPTV works **in cascade with Threadfin**, which handles:
-- Managing the original M3U playlist
-- Buffering streams (recommended: 0.5MB in Threadfin)
-- Providing EPG via XMLTV with associated channels
-
-**Threadfin tested and working** with these settings.
+LightIPTV uses Threadfin **only as a URL resolver** for M3U and XMLTV:
+- It reads the original M3U playlist
+- It reads the XMLTV EPG
+- It does **not** use Threadfin as a streaming proxy (no VLC proxy)
 
 ## 🐳 Docker Hub
 
@@ -69,8 +67,8 @@ services:
 ### Environment Variables
 
 #### Required
-- **`THREADFIN_M3U_URL`**: URL of Threadfin's M3U playlist (can be internal Docker URL)
-- **`THREADFIN_XMLTV_URL`**: URL of Threadfin's XMLTV EPG (can be internal Docker URL)
+- **`THREADFIN_M3U_URL`**: URL of Threadfin's M3U playlist (used only to resolve stream URLs)
+- **`THREADFIN_XMLTV_URL`**: URL of Threadfin's XMLTV EPG (used only for EPG data)
 
 #### Optional
 - **`PORT`**: LightIPTV server port (default: `3005`)
@@ -186,6 +184,11 @@ Press **`H`** key to show/hide real-time FFmpeg log.
 
 The log updates in real-time during stream preparation and remains available during playback.
 
+## ⌨️ Keyboard shortcuts
+
+- **`H`**: toggle FFmpeg log overlay
+- **`D`**: toggle stream debug (segments + latency)
+
 ## 📝 Technical Notes
 
 - **Base image**: `node:20-alpine` (~150MB final with FFmpeg)
@@ -194,6 +197,11 @@ The log updates in real-time during stream preparation and remains available dur
 - **Stream limit**: Configurable max concurrent streams (default: 2)
 - **Auto-cleanup**: Inactive streams terminated after 60 seconds
 - **EPG cache**: 1-hour cache duration to reduce Threadfin calls
+
+## ✅ Threadfin usage model
+
+- Threadfin is **not** used as a streaming proxy.
+- LightIPTV pulls M3U/XMLTV from Threadfin and streams directly from the resolved URLs.
 
 ## 🎯 Recommended Use Cases
 

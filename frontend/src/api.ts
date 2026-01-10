@@ -20,6 +20,10 @@ export type EpgGridResponse = {
   programs: ProgramDto[];
 };
 
+export type ConfigResponse = {
+  locale: string;
+};
+
 export type ChannelStreamDto = {
   tvgId: string;
   name: string;
@@ -46,6 +50,14 @@ export async function fetchChannels(): Promise<ChannelsResponse> {
   const response = await fetch(`${API_BASE}/api/channels`);
   if (!response.ok) {
     throw new Error(`Channels request failed (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function fetchConfig(): Promise<ConfigResponse> {
+  const response = await fetch(`${API_BASE}/api/config`);
+  if (!response.ok) {
+    throw new Error(`Config request failed (${response.status})`);
   }
   return response.json();
 }

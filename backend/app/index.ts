@@ -10,6 +10,7 @@ import { initDirs } from './services/dirs.js';
 import channelsRouter from './routes/channels.js';
 import epgRouter from './routes/epg.js';
 import epgGridRouter from './routes/epg-grid.js';
+import configRouter from './routes/config.js';
 import streamRouter from './routes/stream.js';
 import URL from 'url';
 
@@ -54,6 +55,7 @@ app.use('/images', express.static(path.join(publicDir, 'images')));
 app.use('/api', channelsRouter);
 app.use('/api', epgRouter);
 app.use('/api', epgGridRouter);
+app.use('/api', configRouter);
 app.use('/api/stream', streamRouter);
 
 // Serve frontend in production

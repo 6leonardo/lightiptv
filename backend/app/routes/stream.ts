@@ -13,15 +13,16 @@ router.post('/start', async (req: Request, res: Response) => {
 	const host = req.headers['x-forwarded-host'] || req.headers.host;
 	const baseUrl = `${protocol}://${host}`;
 	const sessionId = `${Math.random().toString(36).substring(2, 9)}`;
-	const stream = streamService.getStream(channelName || '', sessionId);
+	const stream = await streamService.getStream(channelName || '', sessionId);
 
 	if (!stream) {
 		console.log(`Max streams limit reached (${CONFIG.MAX_STREAMS}), rejecting new stream request`);
-		return res.status(429).json({
+		res.status(429).json({
 			error: 'Max streams limit reached',
 			maxStreams: CONFIG.MAX_STREAMS,
 			activeStreams: streamService.streams.size
 		});
+		return
 	}
 
 
@@ -50,7 +51,7 @@ router.get('/status/:sessionId', async (req: Request, res: Response) => {
 		const status = await stream.status();
 		if (!status)
 			return res.json({ ready: false, error: 'Error retrieving stream status', progress: 0 });
-		const maxWaitTime = 20000;
+		const maxWaitTime = 40000;
 		const timeProgress = Math.min((status.elapsedTime / maxWaitTime) * 100, 100);
 
 		const hasSecondTs = status.tsFiles.length >= 3;
@@ -93,6 +94,7 @@ router.post('/heartbeat/:sessionId', (req: Request, res: Response) => {
 	const { sessionId } = req.params;
 	const stream = streamService.getStreamBySessionId(sessionId);
 	if (stream) {
+		console.log(`Received heartbeat for session ${sessionId}`);
 		stream.ping();
 		res.json({ status: 'ok' });
 	} else {

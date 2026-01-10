@@ -51,9 +51,12 @@ body {
   position: relative;
 }
 
-.app-main-full {
-  /* No special override needed for flex unless direction changes, but defaults are fine */
+.epg-grid {
+  height: 100%;
+  width: 100%;
+  position: relative;
 }
+
 
 .app-header {
   display: flex;
@@ -200,167 +203,7 @@ body {
   color: #ffb3b3;
 }
 
-.epg-grid {
-  flex: 1;
-  min-height: 60vh;
-  background: var(--panel);
-  border-radius: 18px;
-  /*border: 1px solid var(--border);*/
-  padding: 0px;
-}
 
-.epg-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 12px;
-  background: var(--panel);
-  border-radius: 18px;
-  border: 1px solid var(--border);
-  min-height: 60vh;
-}
-
-.epg-timeline-scroll {
-  overflow-x: auto;
-}
-
-.epg-timeline-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: max-content;
-}
-
-.epg-timeline-header {
-  display: grid;
-  grid-template-columns: 220px auto;
-  gap: 16px;
-  align-items: center;
-}
-
-.epg-timeline-spacer {
-  height: 24px;
-}
-
-.epg-timeline-hours {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(140px, 1fr);
-  width: max-content;
-}
-
-.epg-timeline-hour {
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  color: var(--muted);
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.epg-row {
-  display: grid;
-  grid-template-columns: 220px auto;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.epg-row-channel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  background: rgba(8, 10, 16, 0.9);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px;
-  cursor: pointer;
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  height: 100%;
-}
-
-.epg-row-logo {
-  width: 100%;
-  height: 90px;
-  object-fit: contain;
-  border-radius: 10px;
-  padding: 0;
-}
-
-.epg-row-logo.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: var(--text);
-  background: transparent;
-}
-
-.epg-row-channel img.epg-row-logo {
-  height: 100%;
-  object-fit: contain;
-}
-
-.epg-row-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-  text-align: center;
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-
-.epg-row-programs {
-  display: flex;
-  gap: 12px;
-  padding-bottom: 4px;
-  width: max-content;
-}
-
-.epg-card {
-  width: 240px;
-  background: rgba(15, 18, 28, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.epg-card.live {
-  border-color: rgba(60, 185, 255, 0.7);
-  box-shadow: 0 0 18px rgba(60, 185, 255, 0.25);
-}
-
-.epg-card img {
-  width: 100%;
-  height: 90px;
-  object-fit: cover;
-  border-radius: 8px;
-}
-
-.epg-card-time {
-  font-size: 0.75rem;
-  color: var(--accent-2);
-  font-weight: 600;
-}
-
-.epg-card-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #f5f7ff;
-  line-height: 1.3;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-.epg-card-category {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
 
 .channel-list-panel {
   background: var(--panel);
@@ -534,15 +377,6 @@ body {
   cursor: pointer;
 }
 
-.epg-channel-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  object-fit: contain;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 6px;
-}
-
 .epg-channel-logo.placeholder {
   display: flex;
   align-items: center;
@@ -559,23 +393,90 @@ body {
 }
 
 .epg-program-cell {
-  padding: 8px 10px;
   border-radius: 10px;
   background: rgba(20, 24, 36, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   overflow: hidden;
-  cursor: pointer;
 }
 
 .epg-program-image {
   width: 96px;
-  /*height: 64px;*/
+  height: 84px;
   object-fit: cover;
   border-radius: 8px;
   flex-shrink: 0;
+}
+
+.epg-program-sidebar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(8, 10, 16, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px 20px 18px;
+  z-index: 6;
+  box-shadow: 0 -18px 30px rgba(0, 0, 0, 0.45);
+}
+
+.epg-program-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.epg-program-sidebar-channel {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.epg-program-sidebar-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.epg-program-sidebar-close {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.epg-program-sidebar-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.epg-program-sidebar-image {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.epg-program-sidebar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.epg-program-sidebar-desc {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .epg-program-cell.is-active {
@@ -643,7 +544,7 @@ body {
 
 .player-close {
   position: absolute;
-  top: 8px;
+  top: -0px;
   right: 8px;
   z-index: 2;
   background: rgba(255, 255, 255, 0.15);
@@ -697,6 +598,38 @@ body {
 .player-progress-meta {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.player-buffer-info {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(8, 10, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  gap: 16px;
+  font-size: 0.75rem;
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.buffer-stat {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.buffer-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.buffer-value {
+  color: var(--accent-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .player-epg {
@@ -814,7 +747,7 @@ body {
 
 .player-epg-tab {
   position: absolute;
-  top: 10%;
+  top: 15%;
   background: linear-gradient(135deg, #0f172a, #111827);
   color: #f5f7ff;
   border: 1px solid rgba(255, 255, 255, 0.12);

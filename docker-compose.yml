@@ -5,14 +5,14 @@ services:
     container_name: iptv-viewer
     restart: unless-stopped
     ports:
-      - "3005:3005"
+      - "${PORT}:3005"
     environment:
-      - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
-      - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
+      - THREADFIN_M3U_URL=${THREADFIN_M3U_URL}
+      - THREADFIN_XMLTV_URL=${THREADFIN_XMLTV_URL}
       - PORT=3005
     volumes:
-      - ./backend/app/data:/app/app/data
-      - ./backend/app/public/cached:/app/app/public/cached
+      - ./iptv/data:/app/app/data
+      - ./iptv/cached:/app/app/public/cached
     networks:
       - iptv-network
 

@@ -5,7 +5,7 @@ dist/
 .env
 *.log
 *.backup
-
+iptv/
 # Backend generated / runtime data
 backend/app/public/cached/
 backend/app/data/
