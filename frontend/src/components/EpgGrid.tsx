@@ -12,6 +12,7 @@ import {
   ProgramStack,
   ProgramTitle,
   ProgramText,
+  ProgramImage,
   TimelineWrapper,
   TimelineBox,
   TimelineTime,
@@ -23,7 +24,10 @@ import type { ChannelDto, ProgramDto } from '../api';
 import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 const HOUR_MS = 60 * 60 * 1000;
-const HOUR_WIDTH = 260;
+const HOUR_WIDTH = 260; // 4.33px al minuto
+const DAY_WIDTH = 24 * HOUR_WIDTH;
+const SIDEBAR_WIDTH = 240;
+const ITEM_HEIGHT = 80;
 
 type EpgGridProps = {
   channels: ChannelDto[];
@@ -89,47 +93,60 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
 
   const epgPrograms = useMemo<PlanbyProgram[]>(
     () =>
-      programs.map((program, index) => ({
-        id: `${program.channelId}-${program.start}-${program.end || 'na'}-${index}`,
-        channelUuid: program.channelId,
-        title: program.title || 'Senza titolo',
-        since: program.start,
-        till: program.end,
-        image: program.preview || '',
-        desc: program.desc,
-        category: program.category,
-        preview: program.preview,
-        channelId: program.channelId
-      })),
+      programs.map((program, index) => {
+        const since = new Date(program.start).toISOString();
+        const till = new Date(program.end || program.start).toISOString();
+        return {
+          id: `${program.channelId}-${since}-${till}-${index}`,
+          channelUuid: program.channelId,
+          title: program.title || 'Senza titolo',
+          since,
+          till,
+          image: program.preview || '',
+          desc: program.desc,
+          category: program.category,
+          preview: program.preview,
+          channelId: program.channelId
+        };
+      }),
     [programs]
   );
 
-  const [startDate, endDate, rangeHours] = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setMinutes(0, 0, 0);
-    start.setHours(start.getHours() - 2);
-    const totalHours = Math.max(1, hoursAhead);
-    const end = new Date(start);
-    end.setHours(end.getHours() + totalHours);
-    return [start.toISOString(), end.toISOString(), totalHours];
-  }, [hoursAhead]);
+  const [startDate, endDate] = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1); // 24h esatte
+    
+    return [today.toISOString(), tomorrow.toISOString()];
+  }, []);
 
   const { getEpgProps, getLayoutProps, onScrollToNow } = useEpg({
     channels: epgChannels,
     epg: epgPrograms,
     startDate,
     endDate,
-    width: size.width,
-    height: size.height,
-    itemHeight: 88,
-    sidebarWidth: 240,
-    dayWidth: rangeHours * HOUR_WIDTH,
-    isRTL: false
+    dayWidth: DAY_WIDTH,
+    sidebarWidth: SIDEBAR_WIDTH,
+    itemHeight: ITEM_HEIGHT,
+    isTimeline: true,
+    isLine: true,
+    isBaseTimeFormat: false,
+    theme: {
+        primary: { 900: '#171923' },
+        grey: { 300: '#d1d1d1' },
+        white: '#fff',
+        green: { 300: '#2C7A7B' },
+        loader: { teal: '#5DDADB', purple: '#3437A2', pink: '#F78EB6', bg: '#171923db' },
+        scrollbar: { border: '#ffffff', thumb: { bg: '#e1e1e1' } },
+        gradient: { blue: { 300: '#002eb3', 600: '#002360', 900: '#051937' } },
+        text: { grey: { 300: '#a0aec0', 500: '#718096' } },
+        timeline: { divider: { bg: '#718096' } },
+    }
   });
 
   const ProgramItem = ({ program, onStart, ...rest }: any) => {
-    const { styles, formatTime, isLive } = useProgram({ program, ...rest });
+    const { styles, formatTime, isLive, isMinWidth } = useProgram({ program, ...rest });
     const { data } = program;
 
     return (
@@ -144,7 +161,8 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
         }}
       >
         <ProgramContent width={styles.width} isLive={isLive}>
-          <ProgramFlex>
+            <ProgramFlex>
+            {isLive && isMinWidth && data.image && <ProgramImage src={data.image} alt="Preview" />}
             <ProgramStack>
               <ProgramTitle>{data.title || 'Senza titolo'}</ProgramTitle>
               <ProgramText>
@@ -159,41 +177,56 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
   };
 
   const Timeline = (props: any) => {
-    const { dayWidth, hourWidth, numberOfHoursInDay, offsetStartHoursRange, sidebarWidth, isSidebar } = props;
-    const { time, dividers, formatTime } = useTimeline(numberOfHoursInDay, false);
+    const { time, dividers, formatTime } = useTimeline(
+      props.numberOfHoursInDay,
+      props.isBaseTimeFormat
+    );
+
+    const renderDividers = () =>
+      dividers.map((_, index) => (
+        <TimelineDivider key={index} width={props.hourWidth} />
+      ));
+
+    const renderTime = (index: number) => (
+      <TimelineBox key={index} width={props.hourWidth}>
+        <TimelineTime>
+          {formatTime(index + props.offsetStartHoursRange).toLowerCase()}
+        </TimelineTime>
+        <TimelineDividers>{renderDividers()}</TimelineDividers>
+      </TimelineBox>
+    );
+
     return (
-      <TimelineWrapper dayWidth={dayWidth} sidebarWidth={sidebarWidth} isSidebar={isSidebar}>
-        {time.map((_, index) => (
-          <TimelineBox key={index} width={hourWidth}>
-            <TimelineTime>{formatTime(index + offsetStartHoursRange).toLowerCase()}</TimelineTime>
-            <TimelineDividers>
-              {dividers.map((__, dividerIndex) => (
-                <TimelineDivider key={dividerIndex} width={hourWidth} />
-              ))}
-            </TimelineDividers>
-          </TimelineBox>
-        ))}
+      <TimelineWrapper
+        dayWidth={props.dayWidth}
+        sidebarWidth={props.sidebarWidth}
+        isSidebar={props.isSidebar}
+      >
+        {time.map((_, index) => renderTime(index))}
       </TimelineWrapper>
     );
   };
 
-  useEffect(() => {
-    if (!size.width || !size.height) return;
-    if (!epgPrograms.length) return;
-    onScrollToNow?.();
-  }, [onScrollToNow, size.height, size.width, epgPrograms.length]);
-
   return (
-    <div className="epg-grid" ref={containerRef} style={{ height: '80vh', width: '100%' }}>
-      {size.width > 0 && (
-        <Epg {...getEpgProps()}>
-          <Layout
-            {...getLayoutProps()}
-            renderTimeline={(props) => <Timeline {...props} />}
-            renderChannel={({ channel }) => (
-              <ChannelBox
-                {...channel.position}
-                key={channel.uuid}
+    <div className="epg-grid" style={{ height: '80vh', width: '100%' }}>
+      <Epg {...getEpgProps()}>
+        <Layout
+          {...getLayoutProps()}
+          renderTimeline={(props) => (
+             <Timeline 
+                 {...props} 
+                 // Force props if missing
+                 dayWidth={DAY_WIDTH} 
+                 sidebarWidth={SIDEBAR_WIDTH}
+                 isSidebar={true}
+                 // Calculate hourWidth if missing (Planby should provide it but let's be safe)
+                 hourWidth={HOUR_WIDTH}
+             />
+          )}
+          renderChannel={({ channel }) => (
+            <ChannelBox
+              {...channel.position}
+              key={channel.uuid}
                 onClick={() => onStartChannel?.(channel.uuid)}
                 role="button"
                 tabIndex={0}
@@ -226,7 +259,6 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
             }}
           />
         </Epg>
-      )}
     </div>
   );
 }

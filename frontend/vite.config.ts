@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import URL from 'url';
+
+const __dirname = path.dirname(URL.fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
