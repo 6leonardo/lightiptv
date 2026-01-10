@@ -73,6 +73,9 @@ io.on('connection', (socket) => {
 	console.log('Client connected');
 
 	socket.on('join-stream', (sessionId: string) => {
+		if (socket.rooms.has(sessionId)) {
+			return;
+		}
 		socket.join(sessionId);
 		console.log(`Client joined stream room: ${sessionId}`);
 	});

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { ChannelDto, ProgramDto } from '../api';
+import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -24,6 +25,15 @@ export default function EpgTimeline({
 }: EpgTimelineProps) {
   const now = useMemo(() => new Date(), []);
   const windowEnd = useMemo(() => new Date(now.getTime() + hoursAhead * HOUR_MS), [now, hoursAhead]);
+  const timelineHours = useMemo(() => {
+    const start = new Date(now);
+    start.setMinutes(0, 0, 0);
+    return Array.from({ length: hoursAhead }, (_, index) => {
+      const next = new Date(start);
+      next.setHours(start.getHours() + index);
+      return next;
+    });
+  }, [now, hoursAhead]);
 
   const programsByChannel = useMemo(() => {
     const map = new Map<string, ProgramDto[]>();
@@ -65,6 +75,16 @@ export default function EpgTimeline({
     <div className="epg-timeline">
       <div className="epg-timeline-scroll">
         <div className="epg-timeline-grid">
+          <div className="epg-timeline-header">
+            <div className="epg-timeline-spacer" />
+            <div className="epg-timeline-hours">
+              {timelineHours.map((hour) => (
+                <div key={hour.toISOString()} className="epg-timeline-hour">
+                  {formatTime(hour)}
+                </div>
+              ))}
+            </div>
+          </div>
           {rows.map(({ channel, programs: channelPrograms }) => (
             <div key={channel.id} className="epg-row">
               <div
@@ -76,14 +96,19 @@ export default function EpgTimeline({
                   if (event.key === 'Enter') onStartChannel?.(channel.id);
                 }}
               >
-            {channel.logo ? (
-              <img src={channel.logo} alt={channel.name} className="epg-row-logo" />
-            ) : (
-              <>
-                <div className="epg-row-logo placeholder">{channel.name.charAt(0)}</div>
-                <div className="epg-row-name">{channel.name}</div>
-              </>
-            )}
+                {channel.logo ? (
+                  <img src={channel.logo} alt={channel.name} className="epg-row-logo" />
+                ) : (
+                  <>
+                    <div
+                      className="epg-row-logo placeholder"
+                      style={{ color: getBadgeColor(channel.name) }}
+                    >
+                      {getChannelBadge(channel.name)}
+                    </div>
+                    <div className="epg-row-name">{channel.name}</div>
+                  </>
+                )}
               </div>
               <div className="epg-row-programs">
             {channelPrograms.map((program, index) => {

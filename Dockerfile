@@ -1,32 +1,37 @@
-# Use Alpine-based Node.js image (smallest)
-FROM node:20-alpine
+FROM node:20-alpine AS deps
 
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
-
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY backend/package*.json backend/
+COPY frontend/package*.json frontend/
 
-# Install dependencies (with dev deps for build)
-RUN npm ci
+RUN cd backend && npm ci
+RUN cd frontend && npm ci
 
-# Copy application files
-COPY tsconfig.json ./
-COPY server.ts ./
-COPY app ./app
-COPY .env.sample ./.env
+FROM node:20-alpine AS build
 
-# Build TypeScript and prune dev deps
-RUN npm run build && npm prune --production
+WORKDIR /app
 
-# Create streams directory
-RUN mkdir -p app/public/streams
+COPY --from=deps /app/backend/node_modules backend/node_modules
+COPY --from=deps /app/frontend/node_modules frontend/node_modules
 
-# Expose port
+COPY backend backend
+COPY frontend frontend
+
+RUN cd frontend && npm run build
+RUN cd backend && npm run build
+
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache ffmpeg
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=build /app/backend/package*.json ./
+COPY --from=build /app/backend/node_modules ./node_modules
+COPY --from=build /app/backend/dist ./app
+
 EXPOSE 3005
 
-# Start application
-CMD ["node", "dist/server.js"]
+CMD ["node", "app/index.js"]

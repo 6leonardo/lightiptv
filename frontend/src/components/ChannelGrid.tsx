@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { ChannelStreamDto, ProgramDto } from '../api';
+import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 function formatTime(date: Date) {
   const h = date.getHours().toString().padStart(2, '0');
@@ -43,7 +44,12 @@ export default function ChannelGrid({ channels, programs, onSelect }: ChannelGri
             {channel.logo ? (
               <img src={channel.logo} alt={channel.name} className="channel-card-logo" />
             ) : (
-              <div className="channel-card-logo placeholder">{channel.name.charAt(0)}</div>
+              <div
+                className="channel-card-logo placeholder"
+                style={{ color: getBadgeColor(channel.name) }}
+              >
+                {getChannelBadge(channel.name)}
+              </div>
             )}
             <div className="channel-card-name">{channel.name}</div>
             {current && (

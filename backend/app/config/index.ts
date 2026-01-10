@@ -13,7 +13,7 @@ const CONFIG = {
   MAX_STREAMS: parseInt(process.env.MAX_STREAMS || '2', 10),
   CHANNELS: {
     DB: path.join(__dirname, '..', 'data', 'channels.json'),
-    DIR: path.join(__dirname, '..', 'data', 'channels')
+    //DIR: path.join(__dirname, '..', 'data', 'channels')
   },
   LOGS: {
     DIR: path.join(__dirname, '..', 'data', 'logs')    

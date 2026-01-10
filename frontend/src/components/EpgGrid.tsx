@@ -1,8 +1,29 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Epg, Layout, useEpg, useProgram } from 'planby';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Epg,
+  Layout,
+  useEpg,
+  useProgram,
+  ChannelBox,
+  ChannelLogo,
+  ProgramBox,
+  ProgramContent,
+  ProgramFlex,
+  ProgramStack,
+  ProgramTitle,
+  ProgramText,
+  TimelineWrapper,
+  TimelineBox,
+  TimelineTime,
+  TimelineDivider,
+  TimelineDividers,
+  useTimeline
+} from 'planby';
 import type { ChannelDto, ProgramDto } from '../api';
+import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 const HOUR_MS = 60 * 60 * 1000;
+const HOUR_WIDTH = 260;
 
 type EpgGridProps = {
   channels: ChannelDto[];
@@ -71,10 +92,10 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
       programs.map((program, index) => ({
         id: `${program.channelId}-${program.start}-${program.end || 'na'}-${index}`,
         channelUuid: program.channelId,
-        title: program.title,
+        title: program.title || 'Senza titolo',
         since: program.start,
         till: program.end,
-        image: program.preview,
+        image: program.preview || '',
         desc: program.desc,
         category: program.category,
         preview: program.preview,
@@ -83,35 +104,27 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
     [programs]
   );
 
-  const [startDate, endDate] = useMemo(() => {
-    if (!programs.length) {
-      const now = new Date();
-      const base = new Date(now);
-      base.setMinutes(0, 0, 0);
-      const end = new Date(base);
-      end.setHours(base.getHours() + Math.max(1, hoursAhead));
-      return [base, end];
-    }
+  const [startDate, endDate, rangeHours] = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() - 2);
+    const totalHours = Math.max(1, hoursAhead);
+    const end = new Date(start);
+    end.setHours(end.getHours() + totalHours);
+    return [start.toISOString(), end.toISOString(), totalHours];
+  }, [hoursAhead]);
 
-    const startTimes = programs.map((program) => new Date(program.start).getTime());
-    const minStart = new Date(Math.min(...startTimes));
-    const base = new Date(minStart);
-    base.setHours(0, 0, 0, 0);
-    const end = new Date(base);
-    end.setHours(23, 0, 0, 0);
-    return [base, end];
-  }, [programs, hoursAhead]);
-
-  const { getEpgProps, getLayoutProps } = useEpg({
+  const { getEpgProps, getLayoutProps, onScrollToNow } = useEpg({
     channels: epgChannels,
     epg: epgPrograms,
     startDate,
     endDate,
     width: size.width,
     height: size.height,
-    itemHeight: 74,
+    itemHeight: 88,
     sidebarWidth: 240,
-    dayWidth: 24 * 300,
+    dayWidth: rangeHours * HOUR_WIDTH,
     isRTL: false
   });
 
@@ -120,9 +133,9 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
     const { data } = program;
 
     return (
-      <div
-        className={`epg-program-cell ${isLive ? 'is-active' : ''}`}
-        style={{ ...styles.position, width: styles.width }}
+      <ProgramBox
+        width={styles.width}
+        style={styles.position}
         role="button"
         tabIndex={0}
         onClick={() => onStart?.(data.channelUuid)}
@@ -130,33 +143,56 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
           if (event.key === 'Enter') onStart?.(data.channelUuid);
         }}
       >
-        {(data.preview || data.image) && (
-          <img
-            className="epg-program-image"
-            src={data.preview || data.image}
-            alt={data.title}
-            loading="lazy"
-          />
-        )}
-        <div className="epg-program-time">
-          {formatTime(data.since)} - {formatTime(data.till)}
-        </div>
-        <div className="epg-program-title">{data.title || 'Senza titolo'}</div>
-        {data.category && <div className="epg-program-category">{data.category}</div>}
-      </div>
+        <ProgramContent width={styles.width} isLive={isLive}>
+          <ProgramFlex>
+            <ProgramStack>
+              <ProgramTitle>{data.title || 'Senza titolo'}</ProgramTitle>
+              <ProgramText>
+                {formatTime(data.since)} - {formatTime(data.till)}
+              </ProgramText>
+              {data.category && <ProgramText>{data.category}</ProgramText>}
+            </ProgramStack>
+          </ProgramFlex>
+        </ProgramContent>
+      </ProgramBox>
     );
   };
 
+  const Timeline = (props: any) => {
+    const { dayWidth, hourWidth, numberOfHoursInDay, offsetStartHoursRange, sidebarWidth, isSidebar } = props;
+    const { time, dividers, formatTime } = useTimeline(numberOfHoursInDay, false);
+    return (
+      <TimelineWrapper dayWidth={dayWidth} sidebarWidth={sidebarWidth} isSidebar={isSidebar}>
+        {time.map((_, index) => (
+          <TimelineBox key={index} width={hourWidth}>
+            <TimelineTime>{formatTime(index + offsetStartHoursRange).toLowerCase()}</TimelineTime>
+            <TimelineDividers>
+              {dividers.map((__, dividerIndex) => (
+                <TimelineDivider key={dividerIndex} width={hourWidth} />
+              ))}
+            </TimelineDividers>
+          </TimelineBox>
+        ))}
+      </TimelineWrapper>
+    );
+  };
+
+  useEffect(() => {
+    if (!size.width || !size.height) return;
+    if (!epgPrograms.length) return;
+    onScrollToNow?.();
+  }, [onScrollToNow, size.height, size.width, epgPrograms.length]);
+
   return (
-    <div className="epg-grid" ref={containerRef}>
+    <div className="epg-grid" ref={containerRef} style={{ height: '80vh', width: '100%' }}>
       {size.width > 0 && (
         <Epg {...getEpgProps()}>
           <Layout
             {...getLayoutProps()}
+            renderTimeline={(props) => <Timeline {...props} />}
             renderChannel={({ channel }) => (
-              <div
-                className="epg-channel-cell"
-                style={channel.position}
+              <ChannelBox
+                {...channel.position}
                 key={channel.uuid}
                 onClick={() => onStartChannel?.(channel.uuid)}
                 role="button"
@@ -166,12 +202,16 @@ export default function EpgGrid({ channels, programs, hoursAhead = 6, onStartCha
                 }}
               >
                 {channel.logo ? (
-                  <img src={channel.logo} alt={channel.name} className="epg-channel-logo" />
+                  <ChannelLogo src={channel.logo} alt={channel.name} />
                 ) : (
-                  <div className="epg-channel-logo placeholder">{channel.name.charAt(0)}</div>
+                  <div
+                    className="epg-channel-logo placeholder"
+                    style={{ color: getBadgeColor(channel.name) }}
+                  >
+                    {getChannelBadge(channel.name)}
+                  </div>
                 )}
-                <div className="epg-channel-name">{channel.name}</div>
-              </div>
+              </ChannelBox>
             )}
             renderProgram={({ program, ...rest }) => {
               const key = `${program.data.channelUuid}-${program.data.since}-${program.data.till}-${program.data.title || ''}`;

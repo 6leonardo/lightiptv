@@ -59,6 +59,8 @@ export default function getFFmpegArgs(filename: string, streamUrl: string): stri
   ];
   */
 
+  //streamUrl = "https://stitcher-ipv4.pluto.tv/v1/stitch/embed/hls/channel/66335489307fa300082bd6e4/master.m3u8?deviceDNT=0&deviceModel=web&deviceVersion=1.0.0&deviceId=web-client-v1&deviceMake=chrome&deviceType=web&appName=web&appVersion=1.0.0&clientModelNumber=1.0.0"
+
   return [
     // --- TIMESTAMP HYGIENE ---
     '-fflags', '+genpts',
@@ -84,7 +86,7 @@ export default function getFFmpegArgs(filename: string, streamUrl: string): stri
     '-f', 'hls',
     '-hls_time', CONFIG.FFMPEG.HLS_TIME.toString(),
     '-hls_list_size', CONFIG.FFMPEG.HLS_LIST_SIZE.toString(),
-    '-hls_segment_type', 'fmp4',
+    '-hls_segment_type', 'mpegts',
     '-hls_flags', 'delete_segments+independent_segments',
     '-hls_playlist_type', 'event',
 

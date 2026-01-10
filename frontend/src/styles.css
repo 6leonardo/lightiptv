@@ -99,6 +99,68 @@ body {
   color: var(--text);
 }
 
+.now-playing-header {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.now-playing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.now-playing-card {
+  background: rgba(12, 14, 22, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 320px;
+}
+
+.now-playing-card img {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.now-playing-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.now-playing-channel {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.now-playing-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.now-playing-time {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.now-playing-empty {
+  color: var(--muted);
+  padding: 16px 0;
+}
+
 .app-header h1 {
   font-size: 1.6rem;
   letter-spacing: 0.02em;
@@ -164,6 +226,31 @@ body {
   min-width: max-content;
 }
 
+.epg-timeline-header {
+  display: grid;
+  grid-template-columns: 220px auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.epg-timeline-spacer {
+  height: 24px;
+}
+
+.epg-timeline-hours {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(140px, 1fr);
+  width: max-content;
+}
+
+.epg-timeline-hour {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 .epg-row {
   display: grid;
   grid-template-columns: 220px auto;
@@ -200,8 +287,8 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  color: #0b0c10;
-  background: linear-gradient(135deg, #4f7cff, #6dd5ed);
+  color: var(--text);
+  background: transparent;
 }
 
 .epg-row-channel img.epg-row-logo {
@@ -345,8 +432,8 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  color: #0b0c10;
-  background: linear-gradient(135deg, #4f7cff, #6dd5ed);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .channel-row-info {
@@ -413,8 +500,8 @@ body {
   justify-content: center;
   font-size: 2rem;
   font-weight: 700;
-  color: #0b0c10;
-  background: linear-gradient(135deg, #4f7cff, #6dd5ed);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .channel-card-name {
@@ -456,8 +543,8 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  color: #0b0c10;
-  background: linear-gradient(135deg, #4f7cff, #6dd5ed);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .epg-channel-name {

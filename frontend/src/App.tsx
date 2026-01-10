@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ChannelGrid from './components/ChannelGrid';
-import EpgTimeline from './components/EpgTimeline';
+import EpgGrid from './components/EpgGrid';
 import PlayerOverlay from './components/PlayerOverlay';
 import { fetchChannels, fetchEpgGrid } from './api';
 import type { ChannelDto, ChannelStreamDto, ProgramDto } from './api';
 import { useSocketUpdates } from './hooks/useSocketUpdates';
 
-const EPG_HOURS_AHEAD = 6;
+const EPG_HOURS_AHEAD = 24;
 
 export default function App() {
   const [channels, setChannels] = useState<ChannelDto[]>([]);
@@ -16,7 +16,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [activeChannel, setActiveChannel] = useState<ChannelStreamDto | null>(null);
-  const [view, setView] = useState<'channels' | 'epg'>('channels');
+  const [view, setView] = useState<'channels' | 'now' | 'epg'>('channels');
   const [filterText, setFilterText] = useState('');
 
   const loadData = useCallback(async () => {
@@ -86,6 +86,27 @@ export default function App() {
     return epgPrograms.filter((program) => allowed.has(program.channelId));
   }, [epgPrograms, filteredEpgChannels]);
 
+  const nowPlaying = useMemo(() => {
+    const now = new Date();
+    const channelMap = new Map(channels.map((channel) => [channel.id, channel.name]));
+    return programs
+      .filter((program) => {
+        if (!program.preview) return false;
+        const start = new Date(program.start);
+        const end = new Date(program.end);
+        return start <= now && end >= now;
+      })
+      .map((program) => ({
+        ...program,
+        channelName: channelMap.get(program.channelId) || program.channelId
+      }))
+      .filter((program) => {
+        if (!normalizedFilter) return true;
+        const text = `${program.title || ''} ${program.channelName}`.toLowerCase();
+        return text.includes(normalizedFilter);
+      });
+  }, [channels, normalizedFilter, programs]);
+
   const handleStartChannel = useCallback(
     (channelId: string) => {
       const match = streamChannels.find((channel) => channel.tvgId === channelId);
@@ -117,6 +138,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={view === 'now' ? 'active' : ''}
+            onClick={() => setView('now')}
+          >
+            Now Playing
+          </button>
+          <button
+            type="button"
             className={view === 'epg' ? 'active' : ''}
             onClick={() => setView('epg')}
           >
@@ -139,10 +167,48 @@ export default function App() {
             <ChannelGrid channels={filteredChannels} programs={programs} onSelect={setActiveChannel} />
           </div>
         </main>
+      ) : view === 'now' ? (
+        <main className="app-main app-main-full">
+          <div className="app-epg-panel">
+            <div className="now-playing-header">Now Playing</div>
+            <div className="now-playing-grid">
+              {nowPlaying.map((program) => (
+                <button
+                  key={`${program.channelId}-${program.start}-${program.end}`}
+                  className="now-playing-card"
+                  onClick={() => handleStartChannel(program.channelId)}
+                  type="button"
+                >
+                  {program.preview && (
+                    <img src={program.preview} alt={program.title || 'Program'} />
+                  )}
+                  <div className="now-playing-body">
+                    <div className="now-playing-channel">{program.channelName}</div>
+                    <div className="now-playing-title">{program.title || 'Senza titolo'}</div>
+                    <div className="now-playing-time">
+                      {new Date(program.start).toLocaleTimeString('it-IT', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}{' '}
+                      -{' '}
+                      {new Date(program.end).toLocaleTimeString('it-IT', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {nowPlaying.length === 0 && (
+                <div className="now-playing-empty">Nessun programma in onda con preview</div>
+              )}
+            </div>
+          </div>
+        </main>
       ) : (
         <main className="app-main app-main-full">
           <div className="app-epg-panel">
-            <EpgTimeline
+            <EpgGrid
               channels={filteredEpgChannels}
               programs={filteredEpgPrograms}
               hoursAhead={EPG_HOURS_AHEAD}

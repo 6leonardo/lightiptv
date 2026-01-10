@@ -50,7 +50,6 @@ router.get('/status/:sessionId', async (req: Request, res: Response) => {
 		const status = await stream.status();
 		if (!status)
 			return res.json({ ready: false, error: 'Error retrieving stream status', progress: 0 });
-
 		const maxWaitTime = 20000;
 		const timeProgress = Math.min((status.elapsedTime / maxWaitTime) * 100, 100);
 

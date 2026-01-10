@@ -12,9 +12,8 @@ node_modules
 Thumbs.db
 
 # File temporanei applicazione
-# Ignora tutto il contenuto della cartella streams
-app/public/cached/*
-app/data/*
+backend/app/public/cached/*
+backend/app/data/*
 
 
 # Documentazione e backup non necessari in prod

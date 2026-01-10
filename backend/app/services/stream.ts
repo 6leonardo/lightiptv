@@ -5,6 +5,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { channelService } from './channels.js';
 import CONFIG from '../config/index.js';
 import getFFmpegArgs from './ffmpeg-profile.js';
+//import getFFmpegArgs from './ffmpeg-detect.js';
 
 function sanitizeChannelName(channelName: string): string {
 	return channelName.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -82,7 +83,7 @@ class Stream {
 			this.logStream?.end();
 			this.logStream = null;
 			// remove dir not files
-			fs.promises.rmdir(this.streamDir, { recursive: true }).catch(err => {
+			fs.promises.rm(this.streamDir, { recursive: true, force: true }).catch(err => {
 				console.error('Error removing stream directory:', err);
 			});
 			this.process = null;
@@ -122,7 +123,6 @@ class Stream {
 	}
 
 	ping() {
-		console.log(`Ping received for stream ${this.channelName}`);
 		if (this.startTime)
 			this.lastAccess = new Date();
 	}

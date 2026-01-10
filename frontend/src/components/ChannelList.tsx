@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { ChannelStreamDto } from '../api';
+import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 type ChannelListProps = {
   channels: ChannelStreamDto[];
@@ -43,7 +44,12 @@ export default function ChannelList({ channels, onSelect, activeId }: ChannelLis
               {channel.logo ? (
                 <img src={channel.logo} alt={channel.name} className="channel-row-logo" />
               ) : (
-                <div className="channel-row-logo placeholder">{channel.name.charAt(0)}</div>
+                <div
+                  className="channel-row-logo placeholder"
+                  style={{ color: getBadgeColor(channel.name) }}
+                >
+                  {getChannelBadge(channel.name)}
+                </div>
               )}
               <div className="channel-row-info">
                 <div className="channel-row-name">{channel.name}</div>

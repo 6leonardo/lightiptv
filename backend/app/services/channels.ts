@@ -50,12 +50,6 @@ class Database {
     db: DBSchema = { channels: {}, decode: {}, programsCache: [] };
 
     init() {
-        if (!fs.existsSync(CONFIG.CHANNELS.DIR)) {
-            fs.mkdirSync(CONFIG.CHANNELS.DIR, { recursive: true });
-        }
-        if (!fs.existsSync(CONFIG.IMAGES.DIR)) {
-            fs.mkdirSync(CONFIG.IMAGES.DIR, { recursive: true });
-        }
         this.read();
     }
 
@@ -118,6 +112,16 @@ class ChannelService {
                 const programs = epgData[channelRecord.tvgId].filter(prog => 
                     channelRecord.schedules.findIndex(existingProg =>
                         existingProg.start.getTime() === new Date(prog.start).getTime()) === -1);
+                // rimuove dupplicati per start e end uguali a un altro programma
+                programs.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+                let i=0;
+                while (i < programs.length - 1) {
+                    if (programs[i].start.getTime() === programs[i+1].start.getTime() && programs[i].stop.getTime() === programs[i+1].stop.getTime()) {
+                        programs.splice(i+1, 1);
+                    } else {
+                        i++;
+                    }
+                }
                 channelRecord.schedules.push(...programs.map(prog => ({
                     ...prog,
                     previewImagePath: null

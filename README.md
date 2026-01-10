@@ -58,7 +58,8 @@ services:
       - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
       - PORT=3005
     volumes:
-      - ./lightiptv/streams:/app/app/public/streams
+      - ./backend/app/data:/app/app/data
+      - ./backend/app/public/cached:/app/app/public/cached
     networks:
       - tvstack
     depends_on:
@@ -87,7 +88,8 @@ environment:
 
 ### Volumes
 
-- **`./lightiptv/streams:/app/app/public/streams`**: External directory for HLS stream segments (avoids writing to container image)
+- **`./backend/app/data:/app/app/data`**: Persisted app data (channels, logs, etc.)
+- **`./backend/app/public/cached:/app/app/public/cached`**: Cached assets and HLS segments
 
 ### 🛠 Customizing FFmpeg Transcoding
 
@@ -130,8 +132,10 @@ module.exports = function(streamUrl, streamDir) {
 
 ```yaml
 volumes:
-  - ./lightiptv/streams:/app/app/public/streams
-  - ./my-ffmpeg-profile.js:/app/app/services/ffmpeg-profile.js # Mount custom profile
+  - ./backend/app/data:/app/app/data
+  - ./backend/app/public/cached:/app/app/public/cached
+  - ./my-ffmpeg-profile.js:/app/app/services/ffmpeg-profile.js # Mount custom profile (production)
+  - ./my-ffmpeg-profile.js:/app/backend/app/services/ffmpeg-profile.ts # Optional for dev/debug
 ```
 
 ## 🚀 Getting Started
@@ -153,7 +157,7 @@ Open browser: `http://localhost:3005`
 
 ## 🎛 Frontend (Vite + React)
 
-The frontend lives in `frontend/` and uses Planby for the EPG grid. When `frontend/dist` exists, the server serves it automatically.
+The frontend lives in `frontend/` and uses Planby for the EPG grid. In production the Vite build is emitted into `backend/app/public/dist` and served by the backend automatically.
 
 ```bash
 cd frontend
