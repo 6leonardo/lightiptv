@@ -56,8 +56,8 @@ services:
       - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
       - PORT=3005
     volumes:
-      - ./backend/app/data:/app/app/data
-      - ./backend/app/public/cached:/app/app/public/cached
+      - ./data:/app/app/data
+      - ./cache:/app/app/public/cached
     networks:
       - tvstack
     depends_on:
@@ -86,54 +86,49 @@ environment:
 
 ### Volumes
 
-- **`./backend/app/data:/app/app/data`**: Persisted app data (channels, logs, etc.)
-- **`./backend/app/public/cached:/app/app/public/cached`**: Cached assets and HLS segments
+- **`./data:/app/app/data`**: Persisted app data (channels, logs, etc.)
+- **`./cache:/app/app/public/cached`**: Cached assets and HLS segments
 
 ### 🛠 Customizing FFmpeg Transcoding
 
-You can fully customize the FFmpeg transcoding parameters by mounting your own configuration file. This allows you to tune performance, change codecs (e.g., use hardware acceleration), or adjust quality without rebuilding the image.
+You can override the FFmpeg pipeline by mounting your own `ffmpeg-profile.js` in the container.
 
-1. Create a file named `ffmpeg-profile.js` locally.
-2. Use the following template and adjust the arguments as needed:
+Create a file named `ffmpeg-profile.js` locally and use this template (updated to the current default profile):
 
 ```javascript
-const path = require('path');
-// You can require the config if needed, or just hardcode values
-// const CONFIG = require('../config');
+const CONFIG = require('../config');
 
-module.exports = function(streamUrl, streamDir) {
+module.exports = function (filename, streamUrl) {
   return [
-    '-fflags', '+genpts+igndts', // Required flags
-    '-f', 'mpegts',
+    '-user_agent', 'Threadfin',
+    '-fflags', '+genpts',
+    '-avoid_negative_ts', 'make_zero',
     '-i', streamUrl,
     '-map', '0:v?',
     '-map', '0:a?',
-    // --- Customization Area ---
-    '-c:v', 'libx264',           // Video Codec (e.g., h264_nvenc for NVIDIA)
-    '-preset', 'veryfast',       // Preset
-    '-tune', 'zerolatency',
-    '-r', '25',                  // Framerate
-    '-g', '50',                  // GOP Size
-    '-c:a', 'aac',               // Audio Codec
-    '-b:a', '128k',              // Audio Bitrate
-    // -------------------------
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-b:a', '96k',
+    '-ar', '48000',
+    '-ac', '2',
     '-f', 'hls',
-    '-hls_time', '4',
-    '-hls_list_size', '8',
-    '-hls_flags', 'delete_segments+append_list',
-    path.join(streamDir, 'playlist.m3u8') // The output path is mandatory
+    '-hls_time', CONFIG.FFMPEG.HLS_TIME.toString(),
+    '-hls_list_size', CONFIG.FFMPEG.HLS_LIST_SIZE.toString(),
+    '-hls_segment_type', 'mpegts',
+    '-hls_flags', 'delete_segments+independent_segments',
+    '-hls_playlist_type', 'event',
+    filename
   ];
 };
 ```
 
-3. Mount this file into the container via `docker-compose.yml`:
+Mount this file into the container via `docker-compose.yml`:
 
 ```yaml
 volumes:
-  - ./backend/app/data:/app/app/data
-  - ./backend/app/public/cached:/app/app/public/cached
-  - ./my-ffmpeg-profile.js:/app/app/services/ffmpeg-profile.js # Mount custom profile (production)
-  - ./my-ffmpeg-profile.js:/app/backend/app/services/ffmpeg-profile.ts # Optional for dev/debug
+  - ./data:/app/app/data
+  - ./cache:/app/app/public/cached
+  - ./my-ffmpeg-profile.js:/app/app/services/ffmpeg-profile.js # Custom FFmpeg profile (production)
 ```
 
 ## 🚀 Getting Started
