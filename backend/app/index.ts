@@ -66,6 +66,7 @@ if (hasFrontend) {
 	});
 }
 
+
 const server = http.createServer(app);
 const io = new SocketIOServer(server);
 streamService.setSocket(io);
@@ -74,17 +75,26 @@ channelService.setSocket(io);
 io.on('connection', (socket) => {
 	console.log('Client connected');
 
-	socket.on('join-stream', (sessionId: string) => {
-		if (socket.rooms.has(sessionId)) {
+	socket.on('join-stream', (channelName: string) => {
+		if (socket.rooms.has(channelName)) {
 			return;
 		}
-		socket.join(sessionId);
-		console.log(`Client joined stream room: ${sessionId}`);
+		socket.join(channelName);
+		console.log(`Client joined stream room: ${channelName}`);
 	});
 
-	socket.on('leave-stream', (sessionId: string) => {
-		socket.leave(sessionId);
-		console.log(`Client left stream room: ${sessionId}`);
+	socket.on('leave-stream', (channelName: string) => {
+		socket.leave(channelName);
+		console.log(`Client left stream room: ${channelName}`);
+	});
+
+	socket.on('stream-heartbeat', (channelName: string) => {
+		console.log(`Received heartbeat for stream: ${channelName}`);
+		streamService.ping(channelName);
+	});
+
+	socket.on('stream-close', (channelName: string) => {
+		streamService.stop(channelName);
 	});
 
 });

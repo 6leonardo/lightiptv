@@ -29,6 +29,7 @@ export type ChannelStreamDto = {
   name: string;
   stream: string;
   logo: string | null;
+  group: string;
   isStreaming: boolean;
 };
 
@@ -70,17 +71,4 @@ export async function startStreamAPI(streamUrl: string, channelName: string) {
   });
   const data = await response.json();
   return { status: response.status, data };
-}
-
-export async function stopStreamAPI(sessionId: string) {
-  return fetch(`${API_BASE}/api/stream/stop/${sessionId}`, { method: 'POST' });
-}
-
-export async function sendHeartbeat(sessionId: string) {
-  return fetch(`${API_BASE}/api/stream/heartbeat/${sessionId}`, { method: 'POST' });
-}
-
-export async function getStreamStatus(sessionId: string) {
-  const response = await fetch(`${API_BASE}/api/stream/status/${sessionId}`);
-  return response.json();
 }

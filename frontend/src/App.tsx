@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ChannelGrid from "./components/ChannelGrid";
 import EpgGrid from "./components/EpgGrid";
 import PlayerOverlay from "./components/PlayerOverlay";
+import ZappingPlayer from "./components/ZappingPlayer";
+import { useZappingService } from "./services/zappingService";
 import { fetchChannels, fetchConfig, fetchEpgGrid } from "./api";
 import type { ChannelDto, ChannelStreamDto, ProgramDto } from "./api";
 import { useSocketUpdates } from "./hooks/useSocketUpdates";
@@ -16,6 +18,7 @@ export default function App() {
     const [error, setError] = useState<string | null>(null);
     const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
     const [activeChannel, setActiveChannel] = useState<ChannelStreamDto | null>(null);
+    const [isZapping, setIsZapping] = useState(false);
     const [view, setView] = useState<"channels" | "now" | "epg">(() => {
         const saved = localStorage.getItem("iptv_view");
         return saved === "channels" || saved === "now" || saved === "epg" ? saved : "channels";
@@ -66,10 +69,24 @@ export default function App() {
     }, [locale, updatedAt]);
 
     const normalizedFilter = filterText.trim().toLowerCase();
+    const groupFilter = normalizedFilter.startsWith("group:")
+        ? normalizedFilter.slice("group:".length).trim()
+        : null;
+    const hasGroupFilter = groupFilter !== null && groupFilter.length > 0;
+    const groupLookup = useMemo(() => {
+        return new Map(streamChannels.map((channel) => [channel.tvgId, channel.group || ""]));
+    }, [streamChannels]);
     const filteredChannels = useMemo(() => {
+        if (hasGroupFilter) {
+            return streamChannels.filter((channel) =>
+                (channel.group || "").toLowerCase().includes(groupFilter)
+            );
+        }
         if (!normalizedFilter) return streamChannels;
         return streamChannels.filter((channel) => channel.name.toLowerCase().includes(normalizedFilter));
-    }, [streamChannels, normalizedFilter]);
+    }, [streamChannels, normalizedFilter, hasGroupFilter, groupFilter]);
+
+    const zapping = useZappingService(filteredChannels, 10);
 
     const programsByChannel = useMemo(() => {
         const map = new Map<string, ProgramDto[]>();
@@ -90,9 +107,14 @@ export default function App() {
     }, [programs, programsByChannel]);
 
     const filteredEpgChannels = useMemo(() => {
+        if (hasGroupFilter) {
+            return epgChannels.filter((channel) =>
+                (groupLookup.get(channel.id) || "").toLowerCase().includes(groupFilter)
+            );
+        }
         if (!normalizedFilter) return epgChannels;
         return epgChannels.filter((channel) => channel.name.toLowerCase().includes(normalizedFilter));
-    }, [epgChannels, normalizedFilter]);
+    }, [epgChannels, normalizedFilter, hasGroupFilter, groupFilter, groupLookup]);
 
     const filteredEpgPrograms = useMemo(() => {
         const allowed = new Set(filteredEpgChannels.map((channel) => channel.id));
@@ -114,11 +136,15 @@ export default function App() {
                 channelName: channelMap.get(program.channelId) || program.channelId,
             }))
             .filter((program) => {
+                if (hasGroupFilter) {
+                    const group = (groupLookup.get(program.channelId) || "").toLowerCase();
+                    return group.includes(groupFilter);
+                }
                 if (!normalizedFilter) return true;
                 const text = `${program.title || ""} ${program.channelName}`.toLowerCase();
                 return text.includes(normalizedFilter);
             });
-    }, [channels, normalizedFilter, programs]);
+    }, [channels, normalizedFilter, programs, hasGroupFilter, groupFilter, groupLookup]);
 
     const handleStartChannel = useCallback(
         (channelId: string) => {
@@ -151,6 +177,16 @@ export default function App() {
                     <button type="button" className={view === "epg" ? "active" : ""} onClick={() => setView("epg")}>
                         EPG
                     </button>
+                    <button
+                        type="button"
+                        className="app-zapping-btn"
+                        onClick={() => {
+                            setIsZapping(true);
+                            zapping.open();
+                        }}
+                    >
+                        📺 Zapping
+                    </button>
                 </div>
                 <input
                     type="text"
@@ -168,7 +204,7 @@ export default function App() {
                 <div className="app-loading">Caricamento EPG...</div>
             ) : view === "channels" ? (
                 <main className="app-main app-main-full">
-                    <div className="app-epg-panel" style={{ overflowY: "auto" }}>
+                    <div className="app-epg-panel" style={{ overflowY: "auto", overflowX: "hidden" }}>
                         <ChannelGrid channels={filteredChannels} programs={programs} onSelect={setActiveChannel} />
                     </div>
                 </main>
@@ -223,6 +259,58 @@ export default function App() {
 
             {activeChannel && (
                 <PlayerOverlay channel={activeChannel} programs={programs} onClose={() => setActiveChannel(null)} />
+            )}
+
+            {isZapping && zapping.active && (
+                <>
+                    {zapping.current && (
+                        <ZappingPlayer
+                            channel={zapping.current.channel}
+                            m3u8Url={zapping.current.m3u8Url}
+                            healthyCount={zapping.healthyCount}
+                            totalChannels={zapping.totalChannels}
+                            zIndex={15000}
+                            onClose={() => {
+                                setIsZapping(false);
+                                zapping.close();
+                            }}
+                            onOpenPlayer={() => {
+                                if (zapping.current?.channel) {
+                                    setIsZapping(false);
+                                    zapping.close();
+                                    setActiveChannel(zapping.current.channel);
+                                }
+                            }}
+                        />
+                    )}
+                    {zapping.warming && (
+                        <ZappingPlayer
+                            channel={zapping.warming.channel}
+                            m3u8Url={zapping.warming.m3u8Url}
+                            healthyCount={zapping.healthyCount}
+                            totalChannels={zapping.totalChannels}
+                            zIndex={10000}
+                            showOverlay={false}
+                            onClose={() => {
+                                setIsZapping(false);
+                                zapping.close();
+                            }}
+                            onOpenPlayer={() => {
+                                if (zapping.current?.channel) {
+                                    setIsZapping(false);
+                                    zapping.close();
+                                    setActiveChannel(zapping.current.channel);
+                                }
+                            }}
+                        />
+                    )}
+                    {!zapping.current && (
+                        <div className="zapping-loading">
+                            <div className="zapping-loading-spinner" />
+                            <div>Preparazione zapping...</div>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

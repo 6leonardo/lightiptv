@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { ChannelStreamDto, ProgramDto } from "../api";
 import { getSocket } from "../socket";
-import { API_BASE, getStreamStatus, sendHeartbeat, startStreamAPI, stopStreamAPI } from "../api";
+import { startStreamAPI } from "../api";
 
 const MAX_ATTEMPTS = 60;
+const STATUS_POLL_INTERVAL = 1000;
 const HEARTBEAT_INTERVAL = 5000;
 
 function formatTime(date: Date) {
@@ -31,8 +32,6 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const hlsRef = useRef<Hls | null>(null);
     const heartbeatRef = useRef<number | null>(null);
-    const sessionIdRef = useRef<string | null>(null);
-    const socketRef = useRef(getSocket());
     const cancelledRef = useRef(false);
     const pollTimeoutRef = useRef<number | null>(null);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -41,6 +40,9 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     const [showSidebar, setShowSidebar] = useState(false);
     const [showLog, setShowLog] = useState(false);
     const [showDebug, setShowDebug] = useState(false);
+    const socketRef = useRef(getSocket());
+    const roomNameRef = useRef<string | null>(null);
+    const joinedRef = useRef(false);
     const [logLines, setLogLines] = useState<string[]>([]);
     const [bufferInfo, setBufferInfo] = useState<{ ahead: number; behind: number; buffered: number; currentSegment: number; totalSegments: number } | null>(null);
 
@@ -71,33 +73,6 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     }, []);
 
     useEffect(() => {
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        return () => {
-            document.body.style.overflow = previousOverflow;
-        };
-    }, []);
-
-    useEffect(() => {
-        const handlePageExit = () => {
-            if (!sessionIdRef.current) return;
-            const url = `${API_BASE}/api/stream/stop/${sessionIdRef.current}`;
-            if (navigator.sendBeacon) {
-                navigator.sendBeacon(url);
-            } else {
-                fetch(url, { method: "POST", keepalive: true }).catch(() => undefined);
-            }
-        };
-
-        window.addEventListener("beforeunload", handlePageExit);
-        window.addEventListener("pagehide", handlePageExit);
-        return () => {
-            window.removeEventListener("beforeunload", handlePageExit);
-            window.removeEventListener("pagehide", handlePageExit);
-        };
-    }, []);
-
-    useEffect(() => {
         const socket = socketRef.current;
         const handleLog = (lines: string[]) => {
             setLogLines((prev) => {
@@ -108,6 +83,44 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
         socket.on("ffmpeg-log", handleLog);
         return () => {
             socket.off("ffmpeg-log", handleLog);
+        };
+    }, []);
+
+    useEffect(() => {
+        const socket = socketRef.current;
+        const handleKilled = (payload: { channelName?: string; why?: string }) => {
+            if (!roomNameRef.current || payload.channelName !== roomNameRef.current) return;
+            setStatus({ state: "error", message: payload.why || "Stream chiuso" });
+            cleanupPlayer();
+            onClose();
+        };
+        socket.on("stream-killed", handleKilled);
+        return () => {
+            socket.off("stream-killed", handleKilled);
+        };
+    }, [onClose]);
+
+    useEffect(() => {
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, []);
+
+    useEffect(() => {
+        const handlePageExit = () => {
+            if (!roomNameRef.current || !joinedRef.current) return;
+            socketRef.current.emit("stream-close", roomNameRef.current);
+            socketRef.current.emit("leave-stream", roomNameRef.current);
+            joinedRef.current = false;
+        };
+
+        window.addEventListener("beforeunload", handlePageExit);
+        window.addEventListener("pagehide", handlePageExit);
+        return () => {
+            window.removeEventListener("beforeunload", handlePageExit);
+            window.removeEventListener("pagehide", handlePageExit);
         };
     }, []);
 
@@ -148,11 +161,15 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
                     throw new Error(data.error);
                 }
 
-                sessionIdRef.current = data.sessionId;
-                socketRef.current.emit("join-stream", data.sessionId);
-                startHeartbeat(data.sessionId);
+                roomNameRef.current = channel.name;
+                socketRef.current.emit("join-stream", channel.name);
+                joinedRef.current = true;
+                startHeartbeat();
 
-                await pollStreamStatus(data.sessionId, data.m3u8Url);
+                const streamUrl =
+                    data.m3u8Url ||
+                    (data.m3u8Path ? new URL(data.m3u8Path, window.location.origin).toString() : "");
+                await waitForStreamReady(streamUrl);
             } catch (err) {
                 if (!cancelled) {
                     setStatus({ state: "error", message: err instanceof Error ? err.message : "Errore avvio stream" });
@@ -170,57 +187,68 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
         };
     }, [channel]);
 
-    const pollStreamStatus = async (sessionId: string, m3u8Url: string) => {
+    const waitForStreamReady = async (fallbackUrl: string) => {
         let attempts = 0;
+        const socket = socketRef.current;
 
-        const checkStatus = async () => {
-            try {
-                const result = await getStreamStatus(sessionId);
-                if (cancelledRef.current) return;
-                const tsCount = result.tsCount || 0;
-                setStatus({
-                    state: "loading",
-                    progress: result.progress || 0,
-                    tsCount,
-                    elapsed: result.elapsedTime || 0,
-                });
+        const onStatus = (result: any) => {
+            if (cancelledRef.current) return;
+            const tsCount = result.tsCount || 0;
+            setStatus({
+                state: "loading",
+                progress: result.progress || 0,
+                tsCount,
+                elapsed: result.elapsedTime || 0,
+            });
 
-                if (result.ready) {
-                    if (attempts === 0) {
-                        attempts += 1;
-                        setTimeout(checkStatus, 200);
-                        return;
-                    }
-                    if (cancelledRef.current) return;
-                    setStatus({ state: "ready" });
-                    initializePlayer(m3u8Url);
-                    return;
+            if (result.ready) {
+                const readyUrl =
+                    result.m3u8Url ||
+                    fallbackUrl ||
+                    (result.m3u8Path
+                        ? new URL(result.m3u8Path, window.location.origin).toString()
+                        : "");
+                setStatus({ state: "ready" });
+                initializePlayer(readyUrl);
+                socket.off("stream-status", onStatus);
+                if (pollTimeoutRef.current) {
+                    window.clearTimeout(pollTimeoutRef.current);
+                    pollTimeoutRef.current = null;
                 }
-
-                if (result.error) {
-                    throw new Error(result.error);
+            }
+            if (result.error) {
+                socket.off("stream-status", onStatus);
+                if (pollTimeoutRef.current) {
+                    window.clearTimeout(pollTimeoutRef.current);
+                    pollTimeoutRef.current = null;
                 }
-
-                attempts += 1;
-                if (attempts >= MAX_ATTEMPTS) {
-                    throw new Error("Timeout: stream non pronto");
-                }
-
-                pollTimeoutRef.current = window.setTimeout(checkStatus, 1000);
-            } catch (err) {
-                if (!cancelledRef.current) {
-                    setStatus({ state: "error", message: err instanceof Error ? err.message : "Errore streaming" });
-                }
+                setStatus({ state: "error", message: result.error || "Errore stream" });
+                cleanupPlayer();
+                onClose();
             }
         };
 
-        checkStatus();
+        socket.on("stream-status", onStatus);
+
+        const tick = () => {
+            if (cancelledRef.current) return;
+            attempts += 1;
+            if (attempts >= MAX_ATTEMPTS) {
+                socket.off("stream-status", onStatus);
+                setStatus({ state: "error", message: "Timeout: stream non pronto" });
+                return;
+            }
+            pollTimeoutRef.current = window.setTimeout(tick, STATUS_POLL_INTERVAL);
+        };
+
+        pollTimeoutRef.current = window.setTimeout(tick, STATUS_POLL_INTERVAL);
     };
 
-    const startHeartbeat = (sessionId: string) => {
+    const startHeartbeat = () => {
+        if (!roomNameRef.current) return;
         if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
         heartbeatRef.current = window.setInterval(() => {
-            sendHeartbeat(sessionId).catch(() => undefined);
+            socketRef.current.emit("stream-heartbeat", roomNameRef.current);
         }, HEARTBEAT_INTERVAL);
     };
 
@@ -386,10 +414,11 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
             window.clearInterval(heartbeatRef.current);
             heartbeatRef.current = null;
         }
-        if (sessionIdRef.current) {
-            socketRef.current.emit("leave-stream", sessionIdRef.current);
-            stopStreamAPI(sessionIdRef.current).catch(() => undefined);
-            sessionIdRef.current = null;
+        if (roomNameRef.current && joinedRef.current) {
+            socketRef.current.emit("stream-close", roomNameRef.current);
+            socketRef.current.emit("leave-stream", roomNameRef.current);
+            roomNameRef.current = null;
+            joinedRef.current = false;
         }
         if (hlsRef.current) {
             hlsRef.current.stopLoad();

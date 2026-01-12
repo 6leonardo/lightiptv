@@ -26,6 +26,7 @@ interface ChannelFrontend {
     name: string;
     stream: string;
     logo: string | null;
+    group: string;
     isStreaming: boolean;
 }
 
@@ -336,6 +337,7 @@ class ChannelService {
             name: ch.name,
             stream: ch.stream,
             logo: !ch.logoCachedPath ? 'none' : CONFIG.IMAGES.DIR_WEB + '/' + ch.logoCachedPath,
+            group: ch.group || '',
             isStreaming: ch.isActive || false
         }));
 
