@@ -16,21 +16,20 @@ function sanitizeChannelName(channelName: string): string {
 class Stream {
 	logStream: fs.WriteStream | null = null;
 	socket: SocketIOServer | null = null;
-	sessionId: string = '';
 	ffmpegProcess: ChildProcess | null = null;
 	streamlinkProcess: ChildProcess | null = null;
 	channelName: string;
+	count: number = 0;
 	startTime?: Date;
 	lastAccess?: Date;
 	pool: StreamService;
-	intervalHandle?: NodeJS.Timeout;
+	liveIntervalHandle?: NodeJS.Timeout;
 	killed: boolean = false;
 
-	constructor(channelName: string, pool: StreamService, sessionId: string) {
+	constructor(channelName: string, pool: StreamService) {
 		this.channelName = channelName;
 		this.pool = pool;
 		this.socket = pool.socket;
-		this.sessionId = sessionId;
 	}
 
 	log(source: 'server' | 'ffmpeg' | 'streamlink', text: string) {
@@ -42,8 +41,8 @@ class Stream {
 		}
 
 		this.logStream.write(line + '\n');
-		if (this.socket && this.sessionId) {
-			this.socket.to(this.sessionId).emit('ffmpeg-log', [text]);
+		if (this.socket && this.channelName) {
+			this.socket.to(this.channelName).emit('ffmpeg-log', [text]);
 		}
 	}
 
@@ -59,6 +58,8 @@ class Stream {
 		return path.join(CONFIG.STREAMS.DIR_WEB, sanitizeChannelName(this.channelName), 'playlist.m3u8');
 	}
 
+
+
 	async open() {
 		const channel = channelService.getChannelByName(this.channelName);
 		if (!(channel && channel.stream))
@@ -67,7 +68,11 @@ class Stream {
 		fs.mkdirSync(this.streamDir, { recursive: true });
 		const streamUrl = await resolveStreamUrl(channel.stream);
 		const ffmpegArgs = getFFmpegArgs(this.streamFilename, "pipe:0")   //getFFmpegArgs(this.streamFilename, streamUrl);
-		this.streamlinkProcess = spawn('streamlink', [streamUrl, 'best', '-O'], { stdio: ['ignore', 'pipe', 'pipe'] });
+		this.streamlinkProcess = spawn('streamlink', [
+			`--http-header=User-Agent=${CONFIG.STREAMLINK_USER_AGENT}`,
+			streamUrl,
+			'best,720,480,360',
+			'-O'], { stdio: ['ignore', 'pipe', 'pipe'] });
 		this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
 
 		this.streamlinkProcess.stdout!.pipe(this.ffmpegProcess.stdin!);
@@ -82,13 +87,13 @@ class Stream {
 		this.lastAccess = new Date();
 
 		this.log('server', `--------------------- STARTED ${new Date().toISOString()} ---------------------`)
-
+		this.count += 1;
 		this.streamlinkProcess.stderr?.on('data', (data) => {
 			this.log('streamlink', data.toString());
 		});
 
 		this.streamlinkProcess.on('exit', (code, signal) => {
-			this.kill({ code, signal });
+			this.kill({ prg:'streamlink', code, signal });
 		});
 
 		this.ffmpegProcess.stdout?.on('data', (data) => {
@@ -100,27 +105,34 @@ class Stream {
 		});
 
 		this.ffmpegProcess.on('exit', (code, signal) => {
-			this.kill({ code, signal });
+			this.kill({ prg:'ffmpeg', code, signal });
 		});
 
 		// check is running and pingged every STREAM_INACTIVITY_TIMEOUT / 2
-		this.intervalHandle = setInterval(() => {
-			if (!this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
+		this.liveIntervalHandle = setInterval(() => {
+			if (this.killed || !this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
 				this.log('server', `--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------`);
 				this.kill({ why: 'inactivity timeout' });
 			}
-		}, CONFIG.STREAM_INACTIVITY_TIMEOUT / 2);
+			this.status();
+		}, CONFIG.STREAM_INACTIVITY_TIMEOUT / 5);
 	}
 
 
-	private kill({ code, signal, why }: { code?: number | null; signal?: NodeJS.Signals | null; why?: string }) {
+	private kill({ prg, code, signal, why }: { prg?: string; code?: number | null; signal?: NodeJS.Signals | null; why?: string }) {
 		if (this.killed)
 			return;
 		this.killed = true;
-		console.log(`Killing stream for channel ${this.channelName} ${why ? `(${why})` : ''}`);
-		if (this.intervalHandle) {
-			clearInterval(this.intervalHandle);
-			this.intervalHandle = undefined;
+		console.log(`Killing stream for channel ${this.channelName} ${why ? `(${why})` :  `PRG: ${prg} CODE: ${code} SIGNAL: ${signal}` }`);
+		if(this.socket && this.channelName) {
+			this.socket.to(this.channelName).emit('stream-killed', {
+				channelName: this.channelName,
+				why: why || `Program ${prg} exited with code ${code} signal ${signal}`,
+			});
+		}
+		if (this.liveIntervalHandle) {
+			clearInterval(this.liveIntervalHandle);
+			this.liveIntervalHandle = undefined;
 		}
 		if (this.ffmpegProcess && this.ffmpegProcess.exitCode === null && this.ffmpegProcess.pid)
 			this.ffmpegProcess.kill('SIGKILL');
@@ -139,7 +151,9 @@ class Stream {
 	}
 
 	close() {
-		this.kill({ why: 'closed by user' });
+		this.count--;
+		if (this.count <= 0)
+			this.kill({ why: 'closed by user' });
 	}
 
 	ping() {
@@ -147,15 +161,29 @@ class Stream {
 			this.lastAccess = new Date();
 	}
 
-	async status() {
-		this.ping();
+	private async status() {
+		//this.ping();
 
 		try {
 			const files = await fs.promises.readdir(this.streamDir);
 			const tsFiles = files.filter(f => !/m3u8(\.pid)?$/.test(f)).sort();
 			const m3u8Exists = files.includes('playlist.m3u8');
 			const elapsedTime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
-			return { files, tsFiles, m3u8Exists, elapsedTime };
+			if (this.socket && this.channelName) {
+				const ready = tsFiles.length >= 3 && m3u8Exists;
+				const maxWaitTime = 40000;
+				const timeProgress = Math.min((elapsedTime / maxWaitTime) * 100, 100);
+				this.socket.to(this.channelName).emit('stream-status', {
+					channelName: this.channelName,
+					ready,
+					tsCount: tsFiles.length,
+					m3u8Exists,
+					progress: ready ? 100 : Math.floor(timeProgress),
+					elapsedTime: Math.floor(elapsedTime / 1000),
+					m3u8Url: this.streamUrl,
+				});
+			}
+			// return { files, tsFiles, m3u8Exists, elapsedTime };
 		} catch (error) {
 			console.error('Error checking stream status:', (error as Error).message);
 		}
@@ -174,17 +202,11 @@ class StreamService {
 		this.socket = socket;
 	}
 
-	getStreamBySessionId(sessionId: string): Stream | null {
-		for (const stream of this.streams.values()) {
-			if (stream.sessionId === sessionId) {
-				stream.ping();
-				return stream;
-			}
-		}
-		return null;
+	getStream(channelName: string): Stream | null {
+		return this.streams.get(channelName) || null;
 	}
 
-	async getStream(channelName: string, sessionId: string): Promise<Stream | null> {
+	async createStream(channelName: string): Promise<Stream | null> {
 		let stream = this.streams.get(channelName);
 
 		if (stream) {
@@ -198,7 +220,7 @@ class StreamService {
 		}
 
 		const release = await this.mutex.acquire();
-		stream = new Stream(channelName, this, sessionId);
+		stream = new Stream(channelName, this);
 		try {
 			await stream.open();
 			this.streams.set(channelName, stream);
@@ -215,6 +237,22 @@ class StreamService {
 		setTimeout(() => {
 			this.streams.delete(channelName);
 		}, CONFIG.TUNER_RELEASE_TIMEOUT);
+	}
+
+	ping(channelName: string) {
+		const stream = this.streams.get(channelName);
+		if (stream) {
+			stream.ping();
+			return true;
+		}
+		return false;
+	}
+
+	stop(channelName: string) {
+		const stream = this.streams.get(channelName);
+		if (stream) {
+			stream.close();
+		}
 	}
 
 	async firstRunCleanup() {
