@@ -54,6 +54,7 @@ interface Source {
 
 interface DBSchema {
     channels: Record<string, ChannelRecord>; // key is channel id
+    tabs: Record<string, string[]>; // key is tab name, values are channel ids
     decode: Record<string, string[]>; // key is channel name lowercased, values are channel ids
     programs: Record<string, ProgramRecord[]>; // key is domain
     sources: Record<string, Source>; // key is url
@@ -71,6 +72,7 @@ const DEFAULT_DB: DBSchema = {
     decode: {},
     programs: {},
     sources: {},
+    tabs: {},
     ids: {
         source: 0,
         channel: 0,
@@ -442,19 +444,24 @@ class ChannelService {
 
     async update() {
         try {
+            console.log('Updating channels...');
             await this.updateChannels();
+            console.log('Updating schedules...');
             await this.updateSchedules();
+            console.log('Updating images...');
             await this.updateImages();
+            console.log('Patching channels...');
+            this.patchChannels();
+            console.log('Finalizing updates...');
             this.getChannels(true);
             this.getPrograms(true);
             this.database.save();
-
+            console.log('Update completed.');
             if (this.socket) {
                 this.socket.emit('channels-updated', true);
                 this.socket.emit('epg-updated', true);
                 this.socket.emit('images-updated', true);
             }
-
             console.log(`Channels updated. Total channels: ${Object.keys(this.db.channels).length}`);
         } catch (err) {
             console.error('Error updating channels or schedules:', (err as Error).message);
@@ -525,7 +532,7 @@ class ChannelService {
         return epg;
     }
 
-    fixChannels() {
+    patchChannels() {
         if (!config.tabs) return;
         const tabs = config.tabs;
         const cTabs: Record<string, ChannelRecord[]> = {};
@@ -573,7 +580,10 @@ class ChannelService {
                 return ch;
             }).filter(c => c !== false) as ChannelRecord[];
             
-            /*
+            
+            for (const ch of cTabs[tab.name])
+                ch.extra['tab'] = tab.name;
+
             if (tab.merge) {
                 const selected = new Set(<string[]>[]);
                 const merged: ChannelRecord[] = [];
@@ -585,13 +595,13 @@ class ChannelService {
                 }
                 cTabs[tab.name] = merged;                        
             } 
-            */           
             
-            for (const ch of cTabs[tab.name])
-                ch.extra['tab'] = tab.name;
+            
         }
-        
-        this.database.save();
+        this.db.tabs = {};
+        for (const [tabName, channels] of Object.entries(cTabs)) {
+            this.db.tabs[tabName] = channels.map(ch => ch.id);
+        }              
     }
 }
 
