@@ -21,6 +21,8 @@ import {
     useTimeline,
 } from "planby";
 import type { ChannelFrontend, ProgramFrontend } from "../api";
+import { useFailedImages } from "../hooks/useFailedImages";
+import { markImageFailed } from "../utils/imageStore";
 import { getBadgeColor, getChannelBadge } from "../utils/channelBadge";
 const HOUR_WIDTH = 260; // 4.33px al minuto
 const DAY_WIDTH = 12 * HOUR_WIDTH; // 12 ore totali (-1h to +11h)
@@ -53,11 +55,10 @@ type PlanbyProgram = {
     channelId: string;
 };
 
-
 export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [_, setSize] = useState({ width: 0, height: 600 });
-
+    const failedImages = useFailedImages();
     const channelMeta = useMemo(() => {
         const map = new Map<string, { name: string; logo: string | null }>();
         channels.forEach((channel) => {
@@ -99,32 +100,32 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
         const rangeEnd = new Date(now.getTime() + 11 * 60 * 60 * 1000);
         const epg: any[] = [];
         for (const channel of channels) {
-            const channelPrograms = programs[channel.epgKey].filter((program) => {
-                const start = new Date(program.start);
-                const end = new Date(program.end || program.start);
-                // Verifica sovrapposizione temporale
-                return start < rangeEnd && end > rangeStart;
-            })
-            .map((program, index) => {
-                const since = new Date(program.start).toISOString();
-                const till = new Date(program.end || program.start).toISOString();
-                return {
-                    id: `${channel.id}-${since}-${till}-${index}`,
-                    channelUuid: channel.id,
-                    title: program.title || "Senza titolo",
-                    since,
-                    till,
-                    image: program.preview || "",
-                    desc: program.desc,
-                    category: program.category,
-                    preview: program.preview,
-                    channelId: channel.id,
-                };
-            });
+            const channelPrograms = programs[channel.epgKey]
+                .filter((program) => {
+                    const start = new Date(program.start);
+                    const end = new Date(program.end || program.start);
+                    // Verifica sovrapposizione temporale
+                    return start < rangeEnd && end > rangeStart;
+                })
+                .map((program, index) => {
+                    const since = new Date(program.start).toISOString();
+                    const till = new Date(program.end || program.start).toISOString();
+                    return {
+                        id: `${channel.id}-${since}-${till}-${index}`,
+                        channelUuid: channel.id,
+                        title: program.title || "Senza titolo",
+                        since,
+                        till,
+                        image: program.preview || "",
+                        desc: program.desc,
+                        category: program.category,
+                        preview: program.preview,
+                        channelId: channel.id,
+                    };
+                });
             epg.push(...channelPrograms);
         }
         return epg;
-            
     }, [programs, channels]);
 
     const [startDate, endDate] = useMemo(() => {
@@ -177,8 +178,13 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
             >
                 <ProgramContent width={styles.width} isLive={isLive} style={{ padding: "8px" }}>
                     <ProgramFlex>
-                        {isMinWidth && data.image && showImage && (
-                            <ProgramImage src={data.image} alt="Preview" style={{ marginRight: "8px" }} />
+                        {isMinWidth && data.image && showImage && !failedImages.has(data.image) && (
+                            <ProgramImage
+                                src={data.image}
+                                alt="Preview"
+                                style={{ marginRight: "8px", objectFit: "cover" }}
+                                onError={() => markImageFailed(data.image)}
+                            />
                         )}
                         <ProgramStack>
                             <ProgramTitle>{data.title || "Senza titolo"}</ProgramTitle>
@@ -194,7 +200,7 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
     };
 
     const Timeline = (props: any) => {
-        const { time, dividers, formatTime }= useTimeline(props.numberOfHoursInDay, props.isBaseTimeFormat);
+        const { time, dividers, formatTime } = useTimeline(props.numberOfHoursInDay, props.isBaseTimeFormat);
 
         const renderDividers = () =>
             dividers.map((_: any, index: number) => <TimelineDivider key={index} width={props.hourWidth} />);

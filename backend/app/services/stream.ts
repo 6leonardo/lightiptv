@@ -1,5 +1,5 @@
 import fs from 'fs';
-import path from 'path';
+import path, { parse } from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { Server as SocketIOServer } from 'socket.io';
 import { channelService, ChannelRecord } from './channels.js';
@@ -62,33 +62,7 @@ class Stream {
 
 
 	private rankChannels(channels: ChannelRecord[]): { channel: ChannelRecord; score: number }[] {
-		const rankCriteria = [
-			{ test: ['4k', 'UHD'], properties: ['quality', 'resolution'], score: 5 },
-			{ test: ['FHD', '1080', 'HD'], properties: ['quality', 'resolution'], score: 3 },
-			{ test: ['SD', '480', '360'], properties: ['quality', 'resolution'], score: 1 },
-			{ test: ['true'], properties: ['geoBlocked'], score: -5 }
-		];
-		const list: { channel: ChannelRecord; score: number }[] = [];
-		for (let index = 0; index < channels.length; index++) {
-			const channel = channels[index];
-			const extra = channel.extra || {};
-			let ranking = 0;
-			for (const criterion of rankCriteria) {
-				for (const prop of criterion.properties) {
-					const value = (channel as any)[prop] || extra[prop];
-					if (value) {
-						for (const testValue of criterion.test) {
-							if (testValue.toLowerCase() === 'true' && (value === true || value === 'true')) {
-								ranking += criterion.score;
-							} else if (typeof value === 'string' && value.toLowerCase().includes(testValue.toLowerCase())) {
-								ranking += criterion.score;
-							}
-						}
-					}
-				}
-			}
-			list.push({ channel, score: ranking });
-		}
+		const list: { channel: ChannelRecord; score: number }[] = channels.map(c => ({ channel: c, score: parseInt(c.extra?.ranking) || 0 }));
 		list.sort((a, b) => b.score - a.score);
 		return list;
 	}

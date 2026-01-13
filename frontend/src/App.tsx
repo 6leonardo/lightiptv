@@ -5,11 +5,55 @@ import PlayerOverlay from "./components/PlayerOverlay";
 import ZappingPlayer from "./components/ZappingPlayer";
 import { useZappingService } from "./services/zappingService";
 import { fetchChannels, fetchConfig, fetchEpgGrid } from "./api";
+import { markImageFailed } from "./utils/imageStore";
+import { useFailedImages } from "./hooks/useFailedImages";
 import type { ChannelFrontend, ProgramFrontend } from "./api";
 import { useSocketUpdates } from "./hooks/useSocketUpdates";
 import { getNowPlaying, getEpgChannels, getEpgPrograms, getFilteredChannels } from "./services/utility";
 
 const EPG_HOURS_AHEAD = 24;
+
+type NowPlayingCardProps = {
+    channel: ChannelFrontend;
+    program: ProgramFrontend;
+    locale: string;
+    onSelect: (channelId: string) => void;
+};
+
+function NowPlayingCard({ channel, program, locale, onSelect }: NowPlayingCardProps) {
+    const failedImages = useFailedImages();
+    return (
+        <button className="now-playing-card" onClick={() => onSelect(channel.id)} type="button">
+            <div className="now-playing-media">
+                {program.preview && !failedImages.has(program.preview) && (
+                    <img
+                        src={program.preview}
+                        alt={program.title || "Program"}
+                        onError={() => markImageFailed(program.preview || "")}
+                    />
+                )}
+                {!(program.preview && !failedImages.has(program.preview)) && (
+                    <div className="fallback">{program.title}</div>
+                )}
+            </div>
+            <div className="now-playing-body">
+                <div className="now-playing-channel">{channel.name}</div>
+                <div className="now-playing-title">{program.title || "No Title"}</div>
+                <div className="now-playing-time">
+                    {new Date(program.start).toLocaleTimeString(locale, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}{" "}
+                    -{" "}
+                    {new Date(program.end).toLocaleTimeString(locale, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}
+                </div>
+            </div>
+        </button>
+    );
+}
 
 export default function App() {
     const [channels, setChannels] = useState<Record<string, ChannelFrontend>>({});
@@ -63,15 +107,18 @@ export default function App() {
 
     const zapping = useZappingService(filteredChannels, 30);
 
-    const filteredEpgChannels = useMemo( ()=> getEpgChannels(filteredChannels, programs), [filteredChannels, programs]);
+    const filteredEpgChannels = useMemo(() => getEpgChannels(filteredChannels, programs), [filteredChannels, programs]);
 
-    const filteredEpgPrograms = useMemo(() => getEpgPrograms(filteredEpgChannels, programs), [filteredEpgChannels, programs ]);
+    const filteredEpgPrograms = useMemo(
+        () => getEpgPrograms(filteredEpgChannels, programs),
+        [filteredEpgChannels, programs]
+    );
 
     const filteredNowPlaying = useMemo(() => getNowPlaying(filteredChannels, programs), [filteredChannels, programs]);
 
     const handleStartChannel = useCallback(
         (channelId: string) => {
-            const match = channels[channelId]
+            const match = channels[channelId];
             if (match) setActiveChannel(match);
         },
         [channels]
@@ -139,31 +186,13 @@ export default function App() {
                                 const program = filteredNowPlaying.programs.get(channel.id);
                                 if (!program || !program.preview) return null;
                                 return (
-                                    <button
+                                    <NowPlayingCard
                                         key={`${channel.id}`}
-                                        className="now-playing-card"
-                                        onClick={() => handleStartChannel(channel.id)}
-                                        type="button"
-                                    >
-                                        {program.preview && (
-                                            <img src={program.preview} alt={program.title || "Program"} />
-                                        )}
-                                        <div className="now-playing-body">
-                                            <div className="now-playing-channel">{channel.name}</div>
-                                            <div className="now-playing-title">{program.title || "No Title"}</div>
-                                            <div className="now-playing-time">
-                                                {new Date(program.start).toLocaleTimeString(locale, {
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                })}{" "}
-                                                -{" "}
-                                                {new Date(program.end).toLocaleTimeString(locale, {
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                })}
-                                            </div>
-                                        </div>
-                                    </button>
+                                        channel={channel}
+                                        program={program}
+                                        locale={locale}
+                                        onSelect={handleStartChannel}
+                                    />
                                 );
                             })}
                             {filteredNowPlaying.channels.size === 0 && (
@@ -186,7 +215,11 @@ export default function App() {
             )}
 
             {activeChannel && (
-                <PlayerOverlay channel={activeChannel} programs={programs[activeChannel.epgKey]} onClose={() => setActiveChannel(null)} />
+                <PlayerOverlay
+                    channel={activeChannel}
+                    programs={programs[activeChannel.epgKey] || []}
+                    onClose={() => setActiveChannel(null)}
+                />
             )}
 
             {isZapping && zapping.active && (

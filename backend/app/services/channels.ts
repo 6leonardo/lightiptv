@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { getConfig, ConfigM3USource, ConfigXMLTVSource } from '../config/index.js';
 import { parseM3U, ChannelEntry } from '../parsers/m3u.js';
-import { parseXMLTV, ProgramEntry } from '../parsers/xmltv.js';
+import { parseXMLTV, ProgramEntry, normalizeString } from '../parsers/xmltv.js';
 import { Server as SocketIOServer } from 'socket.io';
 
 const config = getConfig();
@@ -17,7 +17,7 @@ interface ProgramRecord extends ProgramEntry {
 
 export interface ChannelRecord extends ChannelEntry {
     logoCachedPath: string | null;
-    logoFetched?: boolean;
+    logoFetched: boolean;
     isActive?: boolean;
     epgKey?: string;
 }
@@ -101,6 +101,7 @@ class Database {
             });
             this.db = data;
         } catch (error) {
+            console.error('Error reading channels database, initializing new one:', (error as Error).message);
             this.db = DEFAULT_DB;
             this.save();
         }
@@ -127,8 +128,36 @@ class ChannelService {
         this.socket = ioInstance;
     }
 
-    init() {
+    async init() {
         this.database.init();
+        console.log('Channel database initialized found', Object.keys(this.database.db.channels).length, 'channels');
+        await this.update();
+    }
+
+    private rankChannels(channel: ChannelRecord): void {
+        const rankCriteria = [
+            { test: ['4k', 'UHD'], properties: ['quality', 'resolution'], score: 5 },
+            { test: ['FHD', '1080', 'HD'], properties: ['quality', 'resolution'], score: 3 },
+            { test: ['SD', '480', '360'], properties: ['quality', 'resolution'], score: 1 },
+            { test: ['true'], properties: ['geoBlocked'], score: -5 }
+        ];
+        let ranking = 0;
+        const extra = channel.extra || {};
+        for (const criterion of rankCriteria) {
+            for (const prop of criterion.properties) {
+                const value = (channel as any)[prop] || extra[prop];
+                if (value) {
+                    for (const testValue of criterion.test) {
+                        if (testValue.toLowerCase() === 'true' && (value === true || value === 'true')) {
+                            ranking += criterion.score;
+                        } else if (typeof value === 'string' && value.toLowerCase().includes(testValue.toLowerCase())) {
+                            ranking += criterion.score;
+                        }
+                    }
+                }
+            }
+        }
+        channel.extra['ranking'] = ranking.toString();
     }
 
     getSource(source: ConfigM3USource | ConfigXMLTVSource, type: 'm3u' | 'xmltv'): Source {
@@ -157,7 +186,7 @@ class ChannelService {
     get db() { return this.database.db; }
     get cache() { return this.database.cache; }
 
-    async updateSchedules() {
+    private async updateSchedules() {
         const keys: string[] = []
         for (const sourceKey of Object.keys(config.xmltv.sources)) {
             const config_source = config.xmltv.sources[sourceKey];
@@ -165,13 +194,13 @@ class ChannelService {
             const { epgData, channels } = await parseXMLTV(responseXML.data);
             const schedules = this.db.programs;
             for (const channelRecord of Object.values(this.db.channels)) {
-                let key: string = channelRecord.domain;
+                let key: string = normalizeString(channelRecord.domain);
                 if (key in epgData) {
 
-                } else if (channelRecord.channelID in epgData) {
-                    key = channelRecord.channelID;
-                } else if (channelRecord.tvgid in epgData) {
-                    key = channelRecord.tvgid;
+                } else if (normalizeString(channelRecord.channelID) in epgData) {
+                    key = normalizeString(channelRecord.channelID);
+                } else if (normalizeString(channelRecord.tvgid) in epgData) {
+                    key = normalizeString(channelRecord.tvgid);
                 } else {
                     continue;
                 }
@@ -232,55 +261,35 @@ class ChannelService {
                             }
                         }
                     }
+                    delete schedules[key];
                 }
-                delete schedules[key];
             }
-            this.database.save();
         }
-
-        await this.updateImages();
-        const epgCacheData: Record<string, ProgramFrontend[]> = {};
-
-        // update cache programs
-        for (let key of Object.keys(this.db.programs)) {
-            epgCacheData[key] = this.db.programs[key].map((prog: ProgramRecord) => ({
-                id: `${key}-${prog.start.toISOString()}`,
-                start: prog.start,
-                end: prog.stop,
-                title: prog.title,
-                desc: prog.desc,
-                category: prog.category,
-                preview: prog.previewImagePath ? path.join(config.paths.images.web, prog.previewImagePath) : null
-            }));
-        }
-        this.database.save();
-        this.cache.epg = epgCacheData;
-        if (this.socket)
-            this.socket.emit('epg-updated', true);
     }
 
-    async updateChannels() {
-        const channelChecksum = crypto.createHash('md5').update(JSON.stringify(this.db.channels)).digest('hex');
+    private async updateChannels() {
         for (const sourceKey of Object.keys(config.m3u.sources)) {
             const config_source = config.m3u.sources[sourceKey];
             if (!config_source.active) continue;
             const source = this.getSource(config_source, 'm3u');
             try {
-
                 const response = await axios.get(config_source.url);
                 const channels = parseM3U(source.id, response.data);
                 const existing: string[] = []
 
                 for (const channel of channels) {
                     existing.push(channel.id);
-                    if (!this.db.channels[channel.id]) {
+                    if (!(this.db.channels[channel.id])) {
+                        console.log(`Adding new channel: ${channel.name} (${channel.id})`);
                         this.db.channels[channel.id] = {
                             ...channel,
                             logoCachedPath: null,
+                            logoFetched: false,
                         };
-                        if (!this.db.decode[channel.name.toLowerCase()]) {
+                        if (!(channel.name.toLowerCase() in this.db.decode)) {
                             this.db.decode[channel.name.toLowerCase()] = [];
                         }
+                        this.rankChannels(this.db.channels[channel.id]);
                         this.db.decode[channel.name.toLowerCase()].push(channel.id);
                     } else {
                         const channelRecord = this.db.channels[channel.id]
@@ -301,25 +310,26 @@ class ChannelService {
                             channelRecord.stream = channel.stream;
                         }
                     }
-                    // Remove deleted channels
-                    for (const channelId of Object.keys(this.db.channels)) {
-                        if (!existing.includes(channelId)) {
-                            const channelRecord = this.db.channels[channelId];
-                            if (channelRecord.logoCachedPath) {
-                                try {
-                                    fs.unlinkSync(channelRecord.logoCachedPath);
-                                } catch (err) {
-                                    // Ignore
-                                }
+                }
+
+                // Remove deleted channels
+                for (const channelId of Object.keys(this.db.channels)) {
+                    if (!existing.includes(channelId)) {
+                        const channelRecord = this.db.channels[channelId];
+                        if (channelRecord.logoCachedPath) {
+                            try {
+                                fs.unlinkSync(channelRecord.logoCachedPath);
+                            } catch (err) {
+                                // Ignore
                             }
-                            delete this.db.channels[channelId];
-                            // remove key from array
-                            const filtered = this.db.decode[channelRecord.name.toLowerCase()].filter(id => id !== channelId);
-                            if (filtered.length === 0) {
-                                delete this.db.decode[channelRecord.name.toLowerCase()];
-                            } else {
-                                this.db.decode[channelRecord.name.toLowerCase()] = filtered;
-                            }
+                        }
+                        delete this.db.channels[channelId];
+                        // remove key from array
+                        const filtered = this.db.decode[channelRecord.name.toLowerCase()].filter(id => id !== channelId);
+                        if (filtered.length === 0) {
+                            delete this.db.decode[channelRecord.name.toLowerCase()];
+                        } else {
+                            this.db.decode[channelRecord.name.toLowerCase()] = filtered;
                         }
                     }
                 }
@@ -328,19 +338,6 @@ class ChannelService {
                 throw new Error('Failed to fetch M3U playlist');
             }
         }
-
-        try {
-            if (this.socket) {
-                this.database.save();
-                this.socket.emit('channels-updated', true);
-            }
-            console.log(`Channels updated. Total channels: ${Object.keys(this.db.channels).length}`);
-            this.cache.channels = this.channels
-            await this.updateSchedules();
-        } catch (error) {
-            console.error('Error updating channels:', (error as Error).message);
-        }
-
     }
 
     getPreviewFilename(domain: string, schedule: ProgramEntry): string {
@@ -353,44 +350,42 @@ class ChannelService {
 
     getProgramFromUrl(cryptFilename: string): ProgramRecord | undefined {
         const [domain, _] = cryptFilename.split('-');
-        const programs = this.db.programs[domain.toLowerCase()] || [];
+        const programs = this.db.programs[domain] || [];
         return programs.find(prog => prog?.previewImagePath === cryptFilename);
     }
 
-    async getRemoteImage(url: string, filename?: string): Promise<string | null> {
+    async getRemoteImage(url: string, filename?: string): Promise<{ filename: string | null, stauts: number }> {
         try {
             const response = await axios.get(url, { responseType: 'arraybuffer' });
+            if (response.status !== 200)
+                return { filename: null, stauts: response.status };
             const contentType = response.headers['content-type'] || ""
             const match = contentType.match(/^image\/(.+)$/)
-            if (!match)
-                throw new Error('Invalid image content type');
-
-            const ext = match[1]
+            const ext = match[1] || 'jpg';
             if (!filename)
                 filename = `${crypto.createHash('md5').update(url).digest('hex')}.${ext}`
             fs.writeFileSync(path.join(config.paths.images.dir, filename), response.data);
-            return filename;
+            return { filename, stauts: response.status };
         } catch (error) {
-            console.error('Error fetching image:', (error as Error).message);
-            return null;
+            process.stdout.write('Error fetching image: ' + (error as Error).message + '\r');
+            return { filename: null, stauts: 0 }
         }
     }
 
-    async cacheProgramPreview(imageUrl: string): Promise<Boolean> {
+    async cacheProgramPreview(imageUrl: string): Promise<'yes' | 'no' | 'not-exists'> {
         const program = this.getProgramFromUrl(imageUrl);
-        if (!program) {
-            throw new Error('Preview URL not found');
-        }
-        if (program.previewImageFetched !== 'no') {
-            try {
-                await this.getRemoteImage(program.icon!, imageUrl);
-                program.previewImageFetched = 'yes';
-            } catch (err) {
-                program.previewImageFetched = 'not-exists';
+        if (!program)
+            return 'no'
+        if (program.previewImageFetched === 'no') {
+            const response = await this.getRemoteImage(program.icon!, imageUrl);
+            program.previewImageFetched = response.stauts === 200 ? 'yes' : 'not-exists';
+            if (response.stauts !== 200) {
+                program.previewImagePath = null;
+                this.getPrograms(true);
             }
             this.database.save();
         }
-        return program.previewImageFetched === 'yes';
+        return program.previewImageFetched
     }
 
 
@@ -406,38 +401,53 @@ class ChannelService {
     */
 
 
-    async updateImages() {
-        const updates: { channelId: string; logo?: string }[] = [];
+    async update() {
+        try {
+            await this.updateChannels();
+            await this.updateSchedules();
+            await this.updateImages();
+            this.getChannels(true);
+            this.getPrograms(true);
+            this.database.save();
 
-        for (const channelId of Object.keys(this.db.channels)) {
-            const channelRecord = this.db.channels[channelId];
-            const update: { channelId: string; logo?: string, previews: { start: Date, image: string }[] } = { channelId, previews: [] };
-
-            // Fetch logo if not fetched
-            if (channelRecord.logo && !channelRecord.logoFetched) {
-                try {
-                    const cachedLogo = await this.getRemoteImage(channelRecord.logo);
-                    if (!cachedLogo) throw new Error('Failed to fetch logo');
-                    channelRecord.logoCachedPath = cachedLogo;
-                    update.logo = cachedLogo;
-                }
-                catch (err) {
-                    channelRecord.logoCachedPath = null;
-                }
-                channelRecord.logoFetched = true;
+            if (this.socket) {
+                this.socket.emit('channels-updated', true);
+                this.socket.emit('epg-updated', true);
+                this.socket.emit('images-updated', true);
             }
-            if (update.logo)
-                updates.push(update);
+
+            console.log(`Channels updated. Total channels: ${Object.keys(this.db.channels).length}`);
+        } catch (err) {
+            console.error('Error updating channels or schedules:', (err as Error).message);
         }
-        this.database.save();
-        if (this.socket && updates.length > 0)
-            this.socket.emit('images-update', updates);
     }
 
-    get channels(): Record<string, ChannelFrontend> {
+
+    private async updateImages() {
+        for (const channelId of Object.keys(this.db.channels)) {
+            const channelRecord = this.db.channels[channelId];
+            if (channelRecord.logo && !channelRecord.logoFetched && channelRecord.logo.startsWith('http')) {
+                const response = await this.getRemoteImage(channelRecord.logo);
+                channelRecord.logoCachedPath = response?.stauts === 200 ? response.filename : null;
+                channelRecord.logoFetched = true;
+            }
+        }
+    }
+
+    getBestChannel = (channels: ChannelRecord[]): ChannelRecord => {
+        const list: { channel: ChannelRecord; score: number }[] = channels.map(c => ({ channel: c, score: parseInt(c.extra?.ranking) || 0 }));
+        list.sort((a, b) => b.score - a.score);
+        return list[0].channel;
+    }
+
+    getChannels(update: boolean = false): Record<string, ChannelFrontend> {
+        if (!(update || Object.keys(this.database.cache.channels).length === 0))
+            return this.database.cache.channels;
+
         const channels: Record<string, ChannelFrontend> = {};
-        for (const key of Object.keys(this.db.channels)) {
-            const ch = this.db.channels[key];
+        for (const name of Object.keys(this.db.decode)) {
+
+            const ch = this.getBestChannel(this.getChannelByName(name));
             channels[ch.id] = ({
                 id: ch.id,
                 tvgNo: ch.tvgNo,
@@ -450,7 +460,30 @@ class ChannelService {
                 isStreaming: ch.isActive || false
             });
         }
+        this.database.cache.channels = channels;
         return channels;
+    }
+
+    getPrograms(update: boolean = false): Record<string, ProgramFrontend[]> {
+        if (!(update || Object.keys(this.database.cache.epg).length === 0))
+            return this.database.cache.epg;
+
+        const epg: Record<string, ProgramFrontend[]> = {};
+
+        // update cache programs
+        for (let key of Object.keys(this.db.programs)) {
+            epg[key] = this.db.programs[key].map((prog: ProgramRecord) => ({
+                id: `${key}-${prog.start.toISOString()}`,
+                start: prog.start,
+                end: prog.stop,
+                title: prog.title,
+                desc: prog.desc,
+                category: prog.category,
+                preview: prog.previewImagePath ? path.join(config.paths.images.web, prog.previewImagePath) : null
+            }));
+        }
+        this.database.cache.epg = epg;
+        return epg;
     }
 }
 

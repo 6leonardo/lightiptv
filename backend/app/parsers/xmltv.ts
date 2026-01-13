@@ -1,5 +1,7 @@
 import xml2js from 'xml2js';
 
+const normalizeString = (str: string) => str.toLowerCase().replace(/\s+/g, '');
+
 interface ProgramEntry {
   channelId: string;
   start: Date;
@@ -66,7 +68,7 @@ async function parseXMLTV(xmlContent: string): Promise<{ epgData: Record<string,
     };
 
     programmes.forEach((program: any) => {
-      const channelId = program.$.channel;
+      const channelId = normalizeString(program.$.channel);
       if (!epgData[channelId]) {
         epgData[channelId] = [];
       }
@@ -104,4 +106,4 @@ async function parseXMLTV(xmlContent: string): Promise<{ epgData: Record<string,
   }
 }
 
-export { parseXMLTV, ProgramEntry };
+export { parseXMLTV, ProgramEntry, normalizeString };

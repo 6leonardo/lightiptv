@@ -23,8 +23,7 @@ streamService.firstRunCleanup().then(() => {
 }).catch((err) => {
 	console.error('Error during first run cleanup:', err);
 })
-channelService.init();
-await channelService.updateChannels();
+await channelService.init();
 console.log('Channels initialized');
 
 const app = express();
@@ -46,20 +45,33 @@ if (!hasFrontend) {
 }
 
 // Serve public assets (images, cached files, etc.)
-app.use('/cached', express.static(config.paths.cached));
-const imageMutex = new Mutex();
+app.use('/cached/stream', express.static(config.paths.streams.dir));
+
+const imageMutexes = new Map<string, Mutex>();
+
+function getImageMutex(image: string): Mutex {
+	let mutex = imageMutexes.get(image);
+	if (!mutex) {
+		mutex = new Mutex();
+		imageMutexes.set(image, mutex);
+	}
+	return mutex;
+}
+
 // Serve images with caching
 app.use(config.paths.images.web, async (req, res, next) => {
-	const image = req.path.replace(config.paths.images.web, '');
-	//mutex lock on path
+	const image = req.path.replace(/^\//, ''); 
+	const imageMutex = getImageMutex(image);
 	await imageMutex.runExclusive(async () => {
 		if(await channelService.cacheProgramPreview(image)) {
-			console.log(`Cached image downloaded: ${image}`);
 			res.sendFile(path.join(config.paths.images.dir, image));
 		} else {
 			res.sendStatus(404);
 		}
 	});
+	if(!imageMutex.isLocked()) {
+		imageMutexes.delete(image);
+	}
 });
 
 

@@ -64,7 +64,7 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 	const channels: ChannelEntry[] = [];
 	const missing: { tags: Set<string>, attrs: Set<string> } = { tags: new Set(), attrs: new Set() };
 	const chex = /^(?<domain>[^\s@"]+)(?:@(?:(?<quality>720|1080|4K|SD|HD|FHD|UHD)|(?<region>[A-Za-z][A-Za-z0-9+-]*)(?<quality2>720|1080|4K|SD|HD|FHD|UHD)?))?$/i;
-	const nameex = /^(?<name>[^)\]]+)(:? +\((?<resolution>.+)\))(:? +\[(?<info>.+)\])?(?: (?<hd>HD))??$/i;
+	const nameex = /^(?<name>.*?)(?: (?<hd1>HD))?(:? +\((?<resolution>.+)\))?(:? +\[(?<info>.+)\])?(?: (?<hd>HD))??$/i;
 
 	let currentChannel: ChannelEntry | null = null;
 
@@ -72,12 +72,12 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 		const match = nameFull.match(nameex);
 		if (match) {
 			let geoBlocked = "false";
-			let { name, resolution, info, hd } = match.groups as { name: string; resolution?: string; info?: string; hd?: string };
+			let { name, resolution, info, hd, hd1 } = match.groups as { name: string; resolution?: string; info?: string; hd?: string, hd1?: string };
 			if (/geo-blocked/i.test(info || '')) {
 				info = info?.replace(/geo-blocked/gi, '').trim();
 				geoBlocked = "true";
 			}
-			return { name: name.trim(), resolution: resolution || null, info: info || null, geoBlocked, hd: hd || null };
+			return { name: name.trim(), resolution: resolution || null, info: info || null, geoBlocked, hd: hd || hd1 || null };
 		}
 		return { name: nameFull.trim(), resolution: null, info: null, geoBlocked: "false", hd: null };
 	}
@@ -132,7 +132,7 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 					agent: extractAttribute(trimmed, 'http-header'),
 					referrer: extractAttribute(trimmed, 'http-referrer'),
 					group: extractAttribute(trimmed, 'group-title'),
-					domain: domain || tgvname,
+					domain: domain || tgvname || '',
 					quality: quality || '',
 					region: region || '',
 					resolution: resolution || hd || '',
@@ -141,7 +141,7 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 					tvgid: id || '',
 					tvgNo: extractAttribute(trimmed, 'tvg-chno'),
 					channelID: extractAttribute(trimmed, 'channelID') || '',
-					extra: {},	
+					extra: {},
 					stream: ''
 				};
 			}

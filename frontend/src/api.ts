@@ -41,7 +41,7 @@ export type ChannelsResponse = {
 export const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 export async function fetchEpgGrid(): Promise<EpgResponse> {
-  const response = await fetch(`${API_BASE}/api/epg`);
+  const response = await fetch(`${API_BASE}/api/epg`);  
   if (!response.ok) {
     throw new Error(`EPG request failed (${response.status})`);
   }

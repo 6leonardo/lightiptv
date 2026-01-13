@@ -140,6 +140,17 @@ body {
   border-radius: 14px;
 }
 
+.now-playing-card .fallback {
+    height: 220px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    display: flex;
+    padding: 16px;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
 .now-playing-body {
   display: flex;
   flex-direction: column;
