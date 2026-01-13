@@ -82,7 +82,8 @@ class Stream {
 			const streamUrl = await resolveStreamUrl(channel.stream);
 			const ffmpegArgs = getFFmpegArgs(this.streamFilename, "pipe:0")   //getFFmpegArgs(this.streamFilename, streamUrl);
 			this.streamlinkProcess = spawn('streamlink', [
-				`--http-header=User-Agent=${config.streamlink.userAgent}`,
+				`--http-header=User-Agent=${channel.agent || config.streamlink.userAgent}`,
+				`--http-header=Referer=${channel.referrer || 'www.google.com'}`,
 				streamUrl,
 				'best,720,480,360',
 				'-O'], { stdio: ['ignore', 'pipe', 'pipe'] });

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosResponse } from 'axios';
 import fs from 'fs';
 import crypto from 'crypto';
 import path from 'path';
@@ -45,6 +46,7 @@ export interface ProgramFrontend {
 }
 
 interface Source {
+    name: string;
     url: string;
     type: 'm3u' | 'xmltv';
     id: string;
@@ -138,19 +140,19 @@ class ChannelService {
         const rankCriteria = [
             { test: ['4k', 'UHD'], properties: ['quality', 'resolution'], score: 5 },
             { test: ['FHD', '1080', 'HD'], properties: ['quality', 'resolution'], score: 3 },
-            { test: ['SD', '480', '360'], properties: ['quality', 'resolution'], score: 1 },
+            { test: ['SD', '720', '576'], properties: ['quality', 'resolution'], score: 2 },
+            { test: ['480', '360'], properties: ['quality', 'resolution'], score: 1 },
             { test: ['true'], properties: ['geoBlocked'], score: -5 }
         ];
         let ranking = 0;
         const extra = channel.extra || {};
         for (const criterion of rankCriteria) {
             for (const prop of criterion.properties) {
-                const value = (channel as any)[prop] || extra[prop];
-                if (value) {
+                const value = ((channel as any)[prop] || extra[prop] || '').toString();
+                if (value !== '') {
                     for (const testValue of criterion.test) {
-                        if (testValue.toLowerCase() === 'true' && (value === true || value === 'true')) {
-                            ranking += criterion.score;
-                        } else if (typeof value === 'string' && value.toLowerCase().includes(testValue.toLowerCase())) {
+                        const regex = new RegExp(`${testValue}`, 'i');
+                        if (regex.test(value)) {
                             ranking += criterion.score;
                         }
                     }
@@ -160,15 +162,16 @@ class ChannelService {
         channel.extra['ranking'] = ranking.toString();
     }
 
-    getSource(source: ConfigM3USource | ConfigXMLTVSource, type: 'm3u' | 'xmltv'): Source {
+    getSource(source: ConfigM3USource | ConfigXMLTVSource, type: 'm3u' | 'xmltv', name: string): Source {
         const existingSource = Object.values(this.database.db.sources).find(src => src.url === source.url && src.type === type);
         if (existingSource) {
             return existingSource;
         }
         const newSource: Source = {
+            name,
             url: source.url,
             type,
-            id: `source-${this.database.db.ids.source++}`
+            id: `${this.database.db.ids.source++}`
         };
         this.database.db.sources[newSource.id] = newSource;
         this.database.save();
@@ -271,7 +274,7 @@ class ChannelService {
         for (const sourceKey of Object.keys(config.m3u.sources)) {
             const config_source = config.m3u.sources[sourceKey];
             if (!config_source.active) continue;
-            const source = this.getSource(config_source, 'm3u');
+            const source = this.getSource(config_source, 'm3u', sourceKey);
             try {
                 const response = await axios.get(config_source.url);
                 const channels = parseM3U(source.id, response.data);
@@ -354,21 +357,57 @@ class ChannelService {
         return programs.find(prog => prog?.previewImagePath === cryptFilename);
     }
 
-    async getRemoteImage(url: string, filename?: string): Promise<{ filename: string | null, stauts: number }> {
+    waitingDomains = new Map<string, { stop: number, lastRequest: number, sleep: number }>();
+    async getRemoteImage(url: string, filename?: string): Promise<{ filename: string | null, status: number }> {
         try {
-            const response = await axios.get(url, { responseType: 'arraybuffer' });
+            let retray = true;
+            let count = 0
+            const domain = (new URL(url)).hostname;
+            let response: AxiosResponse = {} as AxiosResponse;
+            while (retray && count < 3) {
+                if (this.waitingDomains.has(domain)) {
+                    const times = this.waitingDomains.get((new URL(url)).hostname)!;
+                    if (Date.now() < times.lastRequest + (times.stop || times.sleep)) {
+                        const waitTime = (times.stop || times.sleep);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                    }
+                }
+                response = await axios.get(url, { responseType: 'arraybuffer', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3' } });
+                if (response.status === 429) {
+                    //guarda se ce retry-after
+                    const retryAfter = response.headers['retry-after'];
+                    const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 30000;
+                    if (this.waitingDomains.has(domain)) {
+                        const existing = this.waitingDomains.get(domain)!;
+                        existing.stop = waitTime;
+                        existing.lastRequest = Date.now()
+                        existing.sleep *= 2;
+                    } else {
+                        this.waitingDomains.set(domain, { stop: waitTime, lastRequest: Date.now(), sleep: 500 });
+                    }
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    count++;
+                } else {
+                    if (this.waitingDomains.has(domain)) {
+                        const times = this.waitingDomains.get(domain)!;
+                        times.stop = 0;
+                        times.lastRequest = Date.now();
+                    }
+                    retray = false;
+                }
+            }
             if (response.status !== 200)
-                return { filename: null, stauts: response.status };
+                return { filename: null, status: response.status };
             const contentType = response.headers['content-type'] || ""
             const match = contentType.match(/^image\/(.+)$/)
             const ext = match[1] || 'jpg';
             if (!filename)
                 filename = `${crypto.createHash('md5').update(url).digest('hex')}.${ext}`
             fs.writeFileSync(path.join(config.paths.images.dir, filename), response.data);
-            return { filename, stauts: response.status };
+            return { filename, status: response.status };
         } catch (error) {
             process.stdout.write('Error fetching image: ' + (error as Error).message + '\r');
-            return { filename: null, stauts: 0 }
+            return { filename: null, status: 0 }
         }
     }
 
@@ -378,8 +417,8 @@ class ChannelService {
             return 'no'
         if (program.previewImageFetched === 'no') {
             const response = await this.getRemoteImage(program.icon!, imageUrl);
-            program.previewImageFetched = response.stauts === 200 ? 'yes' : 'not-exists';
-            if (response.stauts !== 200) {
+            program.previewImageFetched = response.status === 200 ? 'yes' : 'not-exists';
+            if (response.status !== 200) {
                 program.previewImagePath = null;
                 this.getPrograms(true);
             }
@@ -428,7 +467,7 @@ class ChannelService {
             const channelRecord = this.db.channels[channelId];
             if (channelRecord.logo && !channelRecord.logoFetched && channelRecord.logo.startsWith('http')) {
                 const response = await this.getRemoteImage(channelRecord.logo);
-                channelRecord.logoCachedPath = response?.stauts === 200 ? response.filename : null;
+                channelRecord.logoCachedPath = response.status === 200 ? response.filename : null;
                 channelRecord.logoFetched = true;
             }
         }
@@ -484,6 +523,75 @@ class ChannelService {
         }
         this.database.cache.epg = epg;
         return epg;
+    }
+
+    fixChannels() {
+        if (!config.tabs) return;
+        const tabs = config.tabs;
+        const cTabs: Record<string, ChannelRecord[]> = {};
+
+        for (const tab of tabs) {
+            let start = tab.start || 1;
+            let unfilteredChannels: ChannelRecord[] = Object.values(this.db.channels)
+            const channels: ChannelRecord[] = unfilteredChannels.filter(ch => {
+                const source = this.db.sources[parseInt(ch.extra.source || '-1')]?.name || '';
+                if (tab.sources && tab.sources.include && !(tab.sources.include.test(source)))
+                    return false;
+                if (tab.sources && tab.sources.exclude && (tab.sources.exclude.test(source)))
+                    return false;
+                if (tab.groups && tab.groups.include && !(tab.groups.include.test(ch.group || '')))
+                    return false;
+                if (tab.groups && tab.groups.exclude && (tab.groups.exclude.test(ch.group || '')))
+                    return false;
+                if (tab.and && !(tab.and.test(ch.name)))
+                    return false;
+                if (tab.exclude && (tab.exclude.test(ch.name)))
+                    return false;
+                return true;
+            });
+
+            cTabs[tab.name] = channels.map(ch => {
+                if (tab.start)
+                    ch.tvgNo = (start++).toString();
+
+                if (tab.include) {
+                    for (const inc of tab.include) {
+                        if (inc.match.test(ch.name)) {
+                            if ((inc.properties && inc.properties.plain) || (tab.properties && tab.properties.plain)) {
+                                for (const [key, value] of Object.entries({ ...tab.properties?.plain, ...inc.properties?.plain }))
+                                    (ch as any)[key] = value;
+                            }
+                            if ((inc.properties && inc.properties.extra) || (tab.properties && tab.properties.extra)) {
+                                for (const [key, value] of Object.entries({ ...tab.properties?.extra, ...inc.properties?.extra }))
+                                    (ch.extra as any)[key] = value;
+                            }
+                            return ch;
+                        }
+                    }
+                    return false
+                }
+                return ch;
+            }).filter(c => c !== false) as ChannelRecord[];
+            
+            /*
+            if (tab.merge) {
+                const selected = new Set(<string[]>[]);
+                const merged: ChannelRecord[] = [];
+                for (const ch of cTabs[tab.name]) {
+                    if (!selected.has(ch.name)) 
+                        continue;
+                    merged.push(ch);
+                    selected.add(ch.name);
+                }
+                cTabs[tab.name] = merged;                        
+            } 
+            */           
+            
+            for (const ch of cTabs[tab.name])
+                ch.extra['tab'] = tab.name;
+        }
+        
+        this.database.save();
     }
 }
 

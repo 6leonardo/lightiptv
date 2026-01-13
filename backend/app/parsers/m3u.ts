@@ -64,7 +64,7 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 	const channels: ChannelEntry[] = [];
 	const missing: { tags: Set<string>, attrs: Set<string> } = { tags: new Set(), attrs: new Set() };
 	const chex = /^(?<domain>[^\s@"]+)(?:@(?:(?<quality>720|1080|4K|SD|HD|FHD|UHD)|(?<region>[A-Za-z][A-Za-z0-9+-]*)(?<quality2>720|1080|4K|SD|HD|FHD|UHD)?))?$/i;
-	const nameex = /^(?<name>.*?)(?: (?<hd1>HD))?(:? +\((?<resolution>.+)\))?(:? +\[(?<info>.+)\])?(?: (?<hd>HD))??$/i;
+	const nameex = /^(?<name>.*?)(?: (?<hd1>HD|4K))?(:? +\((?<resolution>.+)\))?(:? +\[(?<info>.+)\])?(?: (?<hd>HD|4K))??$/i;
 
 	let currentChannel: ChannelEntry | null = null;
 
@@ -141,7 +141,7 @@ function parseM3U(source: string, content: string): ChannelEntry[] {
 					tvgid: id || '',
 					tvgNo: extractAttribute(trimmed, 'tvg-chno'),
 					channelID: extractAttribute(trimmed, 'channelID') || '',
-					extra: {},
+					extra: { source: source  },
 					stream: ''
 				};
 			}

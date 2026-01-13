@@ -93,6 +93,20 @@ export interface ConfigXMLTVSource {
     threadfin?: boolean;
 }
 
+interface Tab {
+    name: string;
+    description?: string;
+    merge?: boolean;
+    groups?: { include?: RegExp, exclude?: RegExp };
+    sources?: { include?: RegExp, exclude?: RegExp };
+    start?: number;
+    and?: RegExp;
+    properties?: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> };
+    include?: { match: RegExp, properties?: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } }[];
+    exclude?: RegExp;
+}
+
+
 interface Config {
     paths: typeof Paths;
     streamlink: {
@@ -122,8 +136,47 @@ interface Config {
     xmltv: {
         sources: Record<string, ConfigXMLTVSource>;
     };
+    tabs?: Tab[];
 };
 
+
+const toRegExp = (str: string): RegExp => {
+    if (/^\/.*\/$/.test(str)) {
+        const content = str.slice(1, -1);
+        return new RegExp(content);
+    } else {
+        return new RegExp(str, 'i');
+    }
+}
+
+const fromRegExp = (reg: RegExp): string => {
+    return `/${reg.source}/`;
+}
+
+const isExtraProperty = (prop: string): boolean => {
+    const standardProps = ['tvgNo', 'name', 'logo', 'group'];
+    return !standardProps.includes(prop);
+}
+
+const fromProperties = (prop: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> }): Record<string, string | number | boolean> | undefined => {
+    if (prop && (prop.plain || prop.extra)) {
+        const properties = { ...prop.extra, ...prop.plain };
+        return properties;
+    }
+    return undefined;
+}
+
+const toProperties = (properties: Record<string, string | number | boolean>) => {
+    if (!properties) return undefined;
+    const props: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } = { plain: {}, extra: {} };
+    for (const propKey in properties) {
+        if (isExtraProperty(propKey))
+            props.extra![propKey] = properties[propKey];
+        else
+            props.plain![propKey] = properties[propKey];
+    }
+    return props;
+}
 
 class Config {
     config: Config;
@@ -132,12 +185,103 @@ class Config {
         this.config = {} as Config;
     }
 
+    toTabs(obj: any): Tab[] {
+        const tabs: Tab[] = [];
+        for (const key in obj) {
+            const entry = obj[key];
+            const tab: Tab = {
+                name: key,
+                description: entry.description,
+                start: entry.start ? entry.start : undefined,
+                and: entry.and ? toRegExp(entry.and) : undefined,
+                merge: entry.merge ? entry.merge : undefined
+            };
+            if (entry.groups) {
+                const group = { include: entry.groups.include ? toRegExp(entry.groups.include) : undefined, exclude: entry.groups.exclude ? toRegExp(entry.groups.exclude) : undefined };
+                if (group.include || group.exclude)
+                    tab.groups = group
+            }
+            if (entry.sources) {
+                const source = { include: entry.sources.include ? toRegExp(entry.sources.include) : undefined, exclude: entry.sources.exclude ? toRegExp(entry.sources.exclude) : undefined };
+                if (source.include || source.exclude)
+                    tab.sources = source
+            }
+            if (entry.properties)
+                tab.properties = toProperties(entry.properties);
+
+            if (entry.include)
+                tab.include = entry.include.map((inc: any) => {
+                    const includeEntry: { match: RegExp, properties?:{ plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } } = {
+                        match: toRegExp(inc.match)
+                    };
+                    if (inc.properties)
+                        includeEntry.properties = toProperties(inc.properties);
+
+                    return includeEntry;
+                });
+            if (entry.exclude)
+                tab.exclude = toRegExp(entry.exclude);
+
+            tabs.push(tab);
+        }
+        return tabs;
+    }
+
+    fromTabs(tabs: Tab[]): any {
+        const obj: any = {};
+        for (const tab of tabs) {
+            const entry: any = { description: tab.description };
+            if (tab.merge !== undefined)
+                entry.merge = tab.merge;
+            if (tab.groups && (tab.groups.include || tab.groups.exclude)) {
+                entry.groups = {};
+                if (tab.groups.include)
+                    entry.groups.include = fromRegExp(tab.groups.include);
+                if (tab.groups.exclude)
+                    entry.groups.exclude = fromRegExp(tab.groups.exclude);
+            }
+            if (tab.sources && (tab.sources.include || tab.sources.exclude)) {
+                entry.sources = {};
+                if (tab.sources.include)
+                    entry.sources.include = fromRegExp(tab.sources.include);
+                if (tab.sources.exclude)
+                    entry.sources.exclude = fromRegExp(tab.sources.exclude);
+            }
+            if (tab.properties && (tab.properties.plain || tab.properties.extra)) {
+                entry.properties = fromProperties(tab.properties);
+                if (Object.keys(entry.properties).length === 0) {
+                    delete entry.properties;
+                }
+            }
+            if (tab.start !== undefined)
+                entry.start = tab.start;
+            if (tab.and)
+                entry.and = tab.and.source;
+            if (tab.include)
+                entry.include = tab.include.map(inc => {
+                    const includeEntry: any = { match: fromRegExp(inc.match) };
+                    if (inc.properties && (inc.properties.plain || inc.properties.extra)) {
+                        includeEntry.properties = fromProperties(inc.properties);
+                        if (Object.keys(includeEntry.properties).length === 0) {
+                            delete includeEntry.properties;
+                        }
+                    }
+                    return includeEntry;
+                });
+            if (tab.exclude)
+                entry.exclude = fromRegExp(tab.exclude);
+            obj[tab.name] = entry;
+        }
+        return obj;
+    }
+
     async load() {
         try {
             const content = await readFile(ymlConfigPath, 'utf8');
 
             let temp = parse(content);
 
+            temp.tabs = this.toTabs(temp.tabs || {});
             temp.paths = Paths;
             temp.streamlink = {
                 userAgent: process.env.STREAMLINK_USER_AGENT || 'Threadfin',
@@ -198,7 +342,7 @@ class Config {
             const temp: any = { ...this.config };
             temp.m3u['max-connections'] = temp.m3u.maxConnections;
             delete temp.m3u.maxConnections;
-
+            temp.tabs = this.fromTabs(this.config.tabs || []);
             const yamlStr = stringify(temp);
             await writeFile(ymlConfigPath, yamlStr, 'utf8');
         } catch (err) {

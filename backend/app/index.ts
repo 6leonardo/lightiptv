@@ -45,7 +45,7 @@ if (!hasFrontend) {
 }
 
 // Serve public assets (images, cached files, etc.)
-app.use('/cached/stream', express.static(config.paths.streams.dir));
+app.use(config.paths.streams.web, express.static(config.paths.streams.dir));
 
 const imageMutexes = new Map<string, Mutex>();
 
@@ -60,16 +60,16 @@ function getImageMutex(image: string): Mutex {
 
 // Serve images with caching
 app.use(config.paths.images.web, async (req, res, next) => {
-	const image = req.path.replace(/^\//, ''); 
+	const image = req.path.replace(/^\//, '');
 	const imageMutex = getImageMutex(image);
 	await imageMutex.runExclusive(async () => {
-		if(await channelService.cacheProgramPreview(image)) {
+		if (await channelService.cacheProgramPreview(image)) {
 			res.sendFile(path.join(config.paths.images.dir, image));
 		} else {
 			res.sendStatus(404);
 		}
 	});
-	if(!imageMutex.isLocked()) {
+	if (!imageMutex.isLocked()) {
 		imageMutexes.delete(image);
 	}
 });
