@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import CONFIG from '../config/index.js';
+import { getConfig } from '../config/index.js';
 import { streamService } from '../services/stream.js';
 
 const router = express.Router();
@@ -20,10 +20,10 @@ router.post('/start', async (req: Request, res: Response) => {
 	const stream = await streamService.createStream(channelName);
 
 	if (!stream) {
-		console.log(`Max streams limit reached (${CONFIG.MAX_STREAMS}), rejecting new stream request`);
+		console.log(`Max streams limit reached (${getConfig().maxStreams}), rejecting new stream request`);
 		res.status(429).json({
 			error: 'Max streams limit reached',
-			maxStreams: CONFIG.MAX_STREAMS,
+			maxStreams: getConfig().maxStreams,
 			activeStreams: streamService.streams.size
 		});
 		return

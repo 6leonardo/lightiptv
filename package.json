@@ -13,5 +13,8 @@
     "docker:build": "docker build -t astevani/lightiptv:$(node -p \"require('./package.json').version\") -t astevani/lightiptv:latest .",
     "docker:push": "docker push astevani/lightiptv --all-tags",
     "docker:release": "npm run docker:build && npm run docker:push"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
   }
 }

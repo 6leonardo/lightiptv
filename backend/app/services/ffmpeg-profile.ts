@@ -1,11 +1,11 @@
-import CONFIG from '../config/index.js';
+import { getConfig } from '../config/index.js';
 
 /**
  * Generates FFmpeg arguments for the stream.
  * This file can be mounted via Docker volume to customize FFmpeg parameters.
  */
 export default function getFFmpegArgs(filename: string, streamUrl: string = "pipe:0"): string[] {
-
+	const config = getConfig();
 	// Legacy profile (kept for reference)
 	/*
 	return [
@@ -98,8 +98,8 @@ export default function getFFmpegArgs(filename: string, streamUrl: string = "pip
 
 			// --- HLS OUTPUT ---
 			'-f', 'hls',
-			'-hls_time', CONFIG.FFMPEG.HLS_TIME.toString(),
-			'-hls_list_size', CONFIG.FFMPEG.HLS_LIST_SIZE.toString(),
+			'-hls_time', config.ffmpeg.hlsTime.toString(),
+			'-hls_list_size', config.ffmpeg.hlsListSize.toString(),
 			'-hls_segment_type', 'mpegts',
 			'-hls_flags', 'delete_segments+independent_segments',
 			'-hls_playlist_type', 'event',
@@ -136,8 +136,8 @@ export default function getFFmpegArgs(filename: string, streamUrl: string = "pip
 
 			// --- HLS OUTPUT ---
 			'-f', 'hls',
-			'-hls_time', CONFIG.FFMPEG.HLS_TIME.toString(),
-			'-hls_list_size', CONFIG.FFMPEG.HLS_LIST_SIZE.toString(),
+			'-hls_time', config.ffmpeg.hlsTime.toString(),
+			'-hls_list_size', config.ffmpeg.hlsListSize.toString(),
 			'-hls_segment_type', 'mpegts',
 			'-hls_flags', 'delete_segments+independent_segments',
 			'-hls_playlist_type', 'event',

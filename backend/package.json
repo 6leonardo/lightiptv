@@ -5,8 +5,8 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node --loader ts-node/esm app/index.ts",
-    "debug": "node --inspect --loader ts-node/esm app/index.ts",
+    "start": "tsx app/index.ts",
+    "debug": "node --inspect ./node_modules/tsx/dist/cli.mjs app/index.ts",
     "dev": "nodemon",
     "build": "tsc && rm -rf dist/public dist/data && mkdir -p dist/public dist/data dist/data/channels dist/data/logs && cp -R app/public/* dist/public/ && rm -rf dist/public/cached && mkdir -p dist/public/cached"
   },
@@ -36,7 +36,7 @@
     "@types/socket.io-client": "^1.4.36",
     "@types/xml2js": "^0.4.14",
     "nodemon": "^3.0.2",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.19.1",
     "typescript": "^5.5.4",
     "ws": "^8.19.0"
   },
@@ -48,6 +48,6 @@
     "ignore": [
       "app/public/**"
     ],
-    "exec": "node --loader ts-node/esm ./app/index.ts"
+    "exec": "tsx ./app/index.ts"
   }
 }

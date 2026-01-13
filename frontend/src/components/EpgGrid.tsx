@@ -20,7 +20,7 @@ import {
     TimelineDividers,
     useTimeline,
 } from "planby";
-import type { ChannelDto, ProgramDto } from "../api";
+import type { ChannelFrontend, ProgramFrontend } from "../api";
 import { getBadgeColor, getChannelBadge } from "../utils/channelBadge";
 const HOUR_WIDTH = 260; // 4.33px al minuto
 const DAY_WIDTH = 12 * HOUR_WIDTH; // 12 ore totali (-1h to +11h)
@@ -28,8 +28,8 @@ const SIDEBAR_WIDTH = 100;
 const ITEM_HEIGHT = 80;
 
 type EpgGridProps = {
-    channels: ChannelDto[];
-    programs: ProgramDto[];
+    channels: ChannelFrontend[];
+    programs: Record<string, ProgramFrontend[]>;
     hoursAhead?: number;
     onStartChannel?: (channelId: string) => void;
 };
@@ -97,9 +97,9 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
         // Filtra solo programmi nell'intervallo: adesso - 1h fino a adesso + 11h
         const rangeStart = new Date(now.getTime() - 1 * 60 * 60 * 1000);
         const rangeEnd = new Date(now.getTime() + 11 * 60 * 60 * 1000);
-
-        return programs
-            .filter((program) => {
+        const epg: any[] = [];
+        for (const channel of channels) {
+            const channelPrograms = programs[channel.epgKey].filter((program) => {
                 const start = new Date(program.start);
                 const end = new Date(program.end || program.start);
                 // Verifica sovrapposizione temporale
@@ -109,8 +109,8 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
                 const since = new Date(program.start).toISOString();
                 const till = new Date(program.end || program.start).toISOString();
                 return {
-                    id: `${program.channelId}-${since}-${till}-${index}`,
-                    channelUuid: program.channelId,
+                    id: `${channel.id}-${since}-${till}-${index}`,
+                    channelUuid: channel.id,
                     title: program.title || "Senza titolo",
                     since,
                     till,
@@ -118,10 +118,14 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
                     desc: program.desc,
                     category: program.category,
                     preview: program.preview,
-                    channelId: program.channelId,
+                    channelId: channel.id,
                 };
             });
-    }, [programs]);
+            epg.push(...channelPrograms);
+        }
+        return epg;
+            
+    }, [programs, channels]);
 
     const [startDate, endDate] = useMemo(() => {
         const now = new Date();

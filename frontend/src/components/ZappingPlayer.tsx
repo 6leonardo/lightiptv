@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import type { ChannelStreamDto } from "../api";
+import type { ChannelFrontend } from "../api";
 import { useZappingPlayer } from "../services/zappingService";
 
 interface ZappingPlayerProps {
-    channel: ChannelStreamDto | null;
+    channel: ChannelFrontend | null;
     m3u8Url?: string;
     healthyCount: number;
     totalChannels: number;

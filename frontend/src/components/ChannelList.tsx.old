@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import type { ChannelStreamDto } from '../api';
+import { useMemo, useState } from 'react';
+import type { ChannelFrontend } from '../api';
 import { getBadgeColor, getChannelBadge } from '../utils/channelBadge';
 
 type ChannelListProps = {
-  channels: ChannelStreamDto[];
-  onSelect: (channel: ChannelStreamDto) => void;
+  channels: ChannelFrontend[];
+  onSelect: (channel: ChannelFrontend) => void;
   activeId?: string | null;
 };
 

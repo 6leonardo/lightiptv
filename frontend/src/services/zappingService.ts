@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
-import type { ChannelStreamDto } from "../api";
+import type { ChannelFrontend } from "../api";
 import { startStreamAPI } from "../api";
 import { getSocket } from "../socket";
 
@@ -10,7 +10,7 @@ const STATUS_POLL_INTERVAL = 1000;
 const MAX_ATTEMPTS = 30;
 
 type ZappingState = {
-    channel: ChannelStreamDto;
+    channel: ChannelFrontend;
     status: "loading" | "ready" | "error";
     m3u8Url?: string;
     roomName: string;
@@ -27,7 +27,7 @@ type ZappingServiceState = {
     close: () => void;
 };
 
-export function useZappingService(channels: ChannelStreamDto[], zapInterval = 10): ZappingServiceState {
+export function useZappingService(channels: ChannelFrontend[], zapInterval = 10): ZappingServiceState {
     const [active, setActive] = useState(false);
     const [current, setCurrent] = useState<ZappingState | null>(null);
     const [warming, setWarming] = useState<ZappingState | null>(null);
@@ -107,7 +107,7 @@ export function useZappingService(channels: ChannelStreamDto[], zapInterval = 10
         [channels]
     );
 
-    const initStream = useCallback(async (channel: ChannelStreamDto) => {
+    const initStream = useCallback(async (channel: ChannelFrontend) => {
         const { status: responseStatus, data } = await startStreamAPI(channel.stream, channel.name);
         if (responseStatus === 429 || data.error) {
             errorChannelsRef.current.add(channel.tvgId);
@@ -123,7 +123,7 @@ export function useZappingService(channels: ChannelStreamDto[], zapInterval = 10
     }, [startHeartbeat]);
 
     const waitForReady = useCallback(
-        (channel: ChannelStreamDto, roomName: string, fallbackUrl: string): Promise<ZappingState> => {
+        (channel: ChannelFrontend, roomName: string, fallbackUrl: string): Promise<ZappingState> => {
             let attempts = 0;
             const socket = socketRef.current;
             const timers: number[] = [];
@@ -187,7 +187,7 @@ export function useZappingService(channels: ChannelStreamDto[], zapInterval = 10
     );
 
     const warmAndPromote = useCallback(
-        async (channel: ChannelStreamDto) => {
+        async (channel: ChannelFrontend) => {
             if (warmingRef.current) return false;
             const init = await initStream(channel);
             if (!init) return false;
@@ -235,7 +235,7 @@ export function useZappingService(channels: ChannelStreamDto[], zapInterval = 10
         if (current || warming) return;
         let cancelled = false;
         const run = async () => {
-            let candidate = selectStartChannel();
+            let candidate: ChannelFrontend | null = selectStartChannel();
             if (candidate && errorChannelsRef.current.has(candidate.tvgId)) {
                 candidate = pickNextChannel(candidate.tvgId);
             }

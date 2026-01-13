@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
-import type { ChannelStreamDto, ProgramDto } from "../api";
+import type { ChannelFrontend, ProgramFrontend } from "../api";
 import { getSocket } from "../socket";
 import { startStreamAPI } from "../api";
 
@@ -15,8 +15,8 @@ function formatTime(date: Date) {
 }
 
 type PlayerOverlayProps = {
-    channel: ChannelStreamDto | null;
-    programs: ProgramDto[];
+    channel: ChannelFrontend | null;
+    programs: ProgramFrontend[];
     onClose: () => void;
 };
 
@@ -47,10 +47,9 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
     const [bufferInfo, setBufferInfo] = useState<{ ahead: number; behind: number; buffered: number; currentSegment: number; totalSegments: number } | null>(null);
 
     const channelPrograms = useMemo(() => {
-        if (!channel) return { current: null, next: [] as ProgramDto[] };
+        if (!channel) return { current: null, next: [] as ProgramFrontend[] };
         const now = new Date();
         const list = programs
-            .filter((program) => program.channelId === channel.tvgId)
             .map((program) => ({ ...program, startDate: new Date(program.start), endDate: new Date(program.end) }))
             .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
@@ -537,7 +536,7 @@ export default function PlayerOverlay({ channel, programs, onClose }: PlayerOver
                                 <div className="player-epg-label">UP NEXT</div>
                                 {channelPrograms.next.map((program, index) => (
                                     <div
-                                        key={`${program.channelId}-${program.start}-${program.end}-${index}`}
+                                        key={`${program.id}-${index}`}
                                         className="player-epg-card"
                                     >
                                         {program.preview && (!channelLogo || program.preview !== channelLogo) && (

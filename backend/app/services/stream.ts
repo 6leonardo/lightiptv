@@ -2,12 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { Server as SocketIOServer } from 'socket.io';
-import { channelService } from './channels.js';
-import CONFIG from '../config/index.js';
+import { channelService, ChannelRecord } from './channels.js';
+import { getConfig } from '../config/index.js';
 import getFFmpegArgs from './ffmpeg-profile.js';
 import { resolveStreamUrl } from './detect.js';
 import { Mutex } from 'async-mutex';
 //import getFFmpegArgs from './ffmpeg-detect.js';
+
+const config = getConfig();
 
 function sanitizeChannelName(channelName: string): string {
 	return channelName.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -36,7 +38,7 @@ class Stream {
 		// a spazi fissi
 		const line = `[${source}]\t${new Date().toISOString()}\t${text.replace(/\r?\n/gm, '\t\t')}`.replace(/\t\t$/, '');
 		if (!this.logStream) {
-			const logFile = path.join(CONFIG.LOGS.DIR, `${sanitizeChannelName(this.channelName)}.log`);
+			const logFile = path.join(config.paths.logs.dir, `${sanitizeChannelName(this.channelName)}.log`);
 			this.logStream = fs.createWriteStream(logFile, { flags: 'a' });
 		}
 
@@ -47,7 +49,7 @@ class Stream {
 	}
 
 	get streamFilename() {
-		return path.join(CONFIG.STREAMS.DIR, sanitizeChannelName(this.channelName), 'playlist.m3u8');
+		return path.join(config.paths.streams.dir, sanitizeChannelName(this.channelName), 'playlist.m3u8');
 	}
 
 	get streamDir() {
@@ -55,33 +57,83 @@ class Stream {
 	}
 
 	get streamUrl() {
-		return path.join(CONFIG.STREAMS.DIR_WEB, sanitizeChannelName(this.channelName), 'playlist.m3u8');
+		return path.join(config.paths.streams.web, sanitizeChannelName(this.channelName), 'playlist.m3u8');
 	}
 
 
+	private rankChannels(channels: ChannelRecord[]): { channel: ChannelRecord; score: number }[] {
+		const rankCriteria = [
+			{ test: ['4k', 'UHD'], properties: ['quality', 'resolution'], score: 5 },
+			{ test: ['FHD', '1080', 'HD'], properties: ['quality', 'resolution'], score: 3 },
+			{ test: ['SD', '480', '360'], properties: ['quality', 'resolution'], score: 1 },
+			{ test: ['true'], properties: ['geoBlocked'], score: -5 }
+		];
+		const list: { channel: ChannelRecord; score: number }[] = [];
+		for (let index = 0; index < channels.length; index++) {
+			const channel = channels[index];
+			const extra = channel.extra || {};
+			let ranking = 0;
+			for (const criterion of rankCriteria) {
+				for (const prop of criterion.properties) {
+					const value = (channel as any)[prop] || extra[prop];
+					if (value) {
+						for (const testValue of criterion.test) {
+							if (testValue.toLowerCase() === 'true' && (value === true || value === 'true')) {
+								ranking += criterion.score;
+							} else if (typeof value === 'string' && value.toLowerCase().includes(testValue.toLowerCase())) {
+								ranking += criterion.score;
+							}
+						}
+					}
+				}
+			}
+			list.push({ channel, score: ranking });
+		}
+		list.sort((a, b) => b.score - a.score);
+		return list;
+	}
+
 
 	async open() {
-		const channel = channelService.getChannelByName(this.channelName);
-		if (!(channel && channel.stream))
+		// TODO: Choose best stream URL based on quality, region, etc.
+		const channels = channelService.getChannelByName(this.channelName);
+		if (!(channels.length > 0 && channels[0].stream))
 			throw new Error('Channel not found');
 
 		fs.mkdirSync(this.streamDir, { recursive: true });
-		const streamUrl = await resolveStreamUrl(channel.stream);
-		const ffmpegArgs = getFFmpegArgs(this.streamFilename, "pipe:0")   //getFFmpegArgs(this.streamFilename, streamUrl);
-		this.streamlinkProcess = spawn('streamlink', [
-			`--http-header=User-Agent=${CONFIG.STREAMLINK_USER_AGENT}`,
-			streamUrl,
-			'best,720,480,360',
-			'-O'], { stdio: ['ignore', 'pipe', 'pipe'] });
-		this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+		const rankedChannels = this.rankChannels(channels);
+		for (const rc of rankedChannels) {
+			this.log('server', `Channel option: ${rc.channel.stream} (score: ${rc.score})`);
+			const channel = rc.channel;
+			const streamUrl = await resolveStreamUrl(channel.stream);
+			const ffmpegArgs = getFFmpegArgs(this.streamFilename, "pipe:0")   //getFFmpegArgs(this.streamFilename, streamUrl);
+			this.streamlinkProcess = spawn('streamlink', [
+				`--http-header=User-Agent=${config.streamlink.userAgent}`,
+				streamUrl,
+				'best,720,480,360',
+				'-O'], { stdio: ['ignore', 'pipe', 'pipe'] });
+			this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-		this.streamlinkProcess.stdout!.pipe(this.ffmpegProcess.stdin!);
-		//const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+			this.streamlinkProcess.stdout!.pipe(this.ffmpegProcess.stdin!);
+			//const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
-		if (!this.ffmpegProcess.pid || !this.streamlinkProcess.pid)
-			throw new Error('Failed to start ffmpeg process');
+			await new Promise<void>(resolve => setTimeout(() => resolve(), 1000));
+			if (this.ffmpegProcess.exitCode !== null && this.streamlinkProcess.exitCode !== null) {
+				if (this.ffmpegProcess.exitCode === null)
+					this.ffmpegProcess.kill('SIGKILL');
+				if (this.streamlinkProcess.exitCode === null)
+					this.streamlinkProcess.kill('SIGKILL');
+				this.log('server', `Failed to start stream for URL: ${streamUrl}. Trying next option if available.`);
+				continue;
+			}
+			break;
+		}
+		if (this.ffmpegProcess === null || this.streamlinkProcess === null)
+			throw new Error('Failed to start stream for all available URLs.');
 
-		fs.writeFileSync(this.streamFilename + '.pid', `${this.ffmpegProcess.pid.toString()}\n${this.streamlinkProcess.pid.toString()}\n`);
+		if (this.ffmpegProcess.pid && this.streamlinkProcess.pid) {
+			fs.writeFileSync(this.streamFilename + '.pid', `${this.ffmpegProcess.pid.toString()}\n${this.streamlinkProcess.pid.toString()}\n`);
+		}
 
 		this.startTime = new Date();
 		this.lastAccess = new Date();
@@ -93,7 +145,7 @@ class Stream {
 		});
 
 		this.streamlinkProcess.on('exit', (code, signal) => {
-			this.kill({ prg:'streamlink', code, signal });
+			this.kill({ prg: 'streamlink', code, signal });
 		});
 
 		this.ffmpegProcess.stdout?.on('data', (data) => {
@@ -105,17 +157,17 @@ class Stream {
 		});
 
 		this.ffmpegProcess.on('exit', (code, signal) => {
-			this.kill({ prg:'ffmpeg', code, signal });
+			this.kill({ prg: 'ffmpeg', code, signal });
 		});
 
 		// check is running and pingged every STREAM_INACTIVITY_TIMEOUT / 2
 		this.liveIntervalHandle = setInterval(() => {
-			if (this.killed || !this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > CONFIG.STREAM_INACTIVITY_TIMEOUT)) {
+			if (this.killed || !this.lastAccess || (new Date().getTime() - this.lastAccess.getTime() > config.streamInactivityTimeout)) {
 				this.log('server', `--------------------- INACTIVITY TIMEOUT ${new Date().toISOString()} ---------------------`);
 				this.kill({ why: 'inactivity timeout' });
 			}
 			this.status();
-		}, CONFIG.STREAM_INACTIVITY_TIMEOUT / 5);
+		}, config.streamInactivityTimeout / 5);
 	}
 
 
@@ -123,8 +175,8 @@ class Stream {
 		if (this.killed)
 			return;
 		this.killed = true;
-		console.log(`Killing stream for channel ${this.channelName} ${why ? `(${why})` :  `PRG: ${prg} CODE: ${code} SIGNAL: ${signal}` }`);
-		if(this.socket && this.channelName) {
+		console.log(`Killing stream for channel ${this.channelName} ${why ? `(${why})` : `PRG: ${prg} CODE: ${code} SIGNAL: ${signal}`}`);
+		if (this.socket && this.channelName) {
 			this.socket.to(this.channelName).emit('stream-killed', {
 				channelName: this.channelName,
 				why: why || `Program ${prg} exited with code ${code} signal ${signal}`,
@@ -194,7 +246,7 @@ class Stream {
 
 class StreamService {
 	streams: Map<string, Stream> = new Map<string, Stream>();
-	maxStreams: number = CONFIG.MAX_STREAMS;
+	maxStreams: number = config.maxStreams;
 	socket: SocketIOServer | null = null;
 	mutex = new Mutex();
 
@@ -236,7 +288,7 @@ class StreamService {
 	endStream(channelName: string) {
 		setTimeout(() => {
 			this.streams.delete(channelName);
-		}, CONFIG.TUNER_RELEASE_TIMEOUT);
+		}, config.tunerReleaseTimeout);
 	}
 
 	ping(channelName: string) {
@@ -256,7 +308,10 @@ class StreamService {
 	}
 
 	async firstRunCleanup() {
-		const streamsDir = CONFIG.STREAMS.DIR;
+		const streamsDir = config.paths.streams.dir;
+		if (!fs.existsSync(streamsDir)) {
+			return;
+		}
 		const dirs = await fs.promises.readdir(streamsDir, { withFileTypes: true });
 		for (const dirent of dirs) {
 			if (dirent.isDirectory()) {

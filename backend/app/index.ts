@@ -3,19 +3,19 @@ import fs from 'fs';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import CONFIG from './config/index.js';
+import { getConfig } from './config/index.js';
 import { channelService } from './services/channels.js';
 import { streamService } from './services/stream.js';
 import { initDirs } from './services/dirs.js';
 import channelsRouter from './routes/channels.js';
 import epgRouter from './routes/epg.js';
-import epgGridRouter from './routes/epg-grid.js';
 import configRouter from './routes/config.js';
 import streamRouter from './routes/stream.js';
 import URL from 'url';
+import { Mutex } from 'async-mutex';
 
 const __dirname = path.dirname(URL.fileURLToPath(import.meta.url));
-
+const config = getConfig();
 
 initDirs();
 streamService.firstRunCleanup().then(() => {
@@ -28,9 +28,7 @@ await channelService.updateChannels();
 console.log('Channels initialized');
 
 const app = express();
-const frontendDist = path.join(__dirname, 'public', 'dist');
-const publicDir = path.join(__dirname, 'public');
-const hasFrontend = fs.existsSync(frontendDist);
+const hasFrontend = fs.existsSync(config.paths.frontend);
 
 app.use(express.json());
 
@@ -48,21 +46,34 @@ if (!hasFrontend) {
 }
 
 // Serve public assets (images, cached files, etc.)
-app.use('/cached', express.static(path.join(publicDir, 'cached')));
-app.use('/images', express.static(path.join(publicDir, 'images')));
+app.use('/cached', express.static(config.paths.cached));
+const imageMutex = new Mutex();
+// Serve images with caching
+app.use(config.paths.images.web, async (req, res, next) => {
+	const image = req.path.replace(config.paths.images.web, '');
+	//mutex lock on path
+	await imageMutex.runExclusive(async () => {
+		if(await channelService.cacheProgramPreview(image)) {
+			console.log(`Cached image downloaded: ${image}`);
+			res.sendFile(path.join(config.paths.images.dir, image));
+		} else {
+			res.sendStatus(404);
+		}
+	});
+});
+
 
 // API routes
 app.use('/api', channelsRouter);
 app.use('/api', epgRouter);
-app.use('/api', epgGridRouter);
 app.use('/api', configRouter);
 app.use('/api/stream', streamRouter);
 
 // Serve frontend in production
 if (hasFrontend) {
-	app.use(express.static(frontendDist));
+	app.use(express.static(config.paths.frontend));
 	app.get('*', (_req, res) => {
-		res.sendFile(path.join(frontendDist, 'index.html'));
+		res.sendFile(path.join(config.paths.frontend, 'index.html'));
 	});
 }
 
@@ -101,12 +112,14 @@ io.on('connection', (socket) => {
 
 
 async function start() {
-	console.log(`Server running on http://localhost:${CONFIG.PORT}`);
-	console.log(`Threadfin M3U URL: ${CONFIG.THREADFIN_M3U_URL}`);
-	console.log(`Threadfin XMLTV URL: ${CONFIG.THREADFIN_XMLTV_URL}`);
-	console.log(`Max streams: ${CONFIG.MAX_STREAMS === 0 ? 'unlimited' : CONFIG.MAX_STREAMS}`);
+	console.log(`Server running on http://${config.address}:${config.port}`);
+	console.log(`M3Us URL: \n${Object.keys(config.m3u.sources).map(key => `\t${key}: ${config.m3u.sources[key].url}`).join('\n')}\n\n`);
+	console.log(`XMLTVs URL: \n${Object.keys(config.xmltv.sources).map(key => `\t${key}: ${config.xmltv.sources[key].url}`).join('\n')}\n\n`);
+	console.log(`Max streams: ${config.maxStreams === 0 ? 'unlimited' : config.maxStreams}`);
 }
 
-server.listen(CONFIG.PORT, start);
+server.listen(config.port, config.address, () => {
+	start();
+});
 
 export default app;

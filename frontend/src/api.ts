@@ -1,46 +1,47 @@
-export type ChannelDto = {
-  id: string;
-  name: string;
-  logo: string | null;
-};
 
-export type ProgramDto = {
-  id: string;
-  channelId: string;
-  title: string;
-  start: string;
-  end: string;
-  desc: string | null;
-  category: string | null;
-  preview: string | null;
-};
-
-export type EpgGridResponse = {
-  channels: ChannelDto[];
-  programs: ProgramDto[];
-};
 
 export type ConfigResponse = {
   locale: string;
 };
 
-export type ChannelStreamDto = {
-  tvgId: string;
-  name: string;
-  stream: string;
-  logo: string | null;
-  group: string;
-  isStreaming: boolean;
+
+export interface ChannelFrontend {
+    id: string;
+    tvgId: string;
+    chno: string | null;
+    name: string;
+    stream: string;
+    logo: string | null;
+    group: string;
+    epgKey: string;
+    isStreaming: boolean;
+}
+
+export interface ProgramFrontend {
+    id: string;
+    start: Date;
+    end: Date;
+    title?: string;
+    desc?: string;
+    category?: string;
+    preview: string | null;
+}
+
+
+
+export type EpgResponse = {
+  programs: Record<string, ProgramFrontend[]>; // key is channel epgKey
 };
 
+
 export type ChannelsResponse = {
-  channels: ChannelStreamDto[];
+  channels: Record<string, ChannelFrontend>; // key is channel id
 };
 
 export const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-export async function fetchEpgGrid(): Promise<EpgGridResponse> {
-  const response = await fetch(`${API_BASE}/api/epg-grid`);
+export async function fetchEpgGrid(): Promise<EpgResponse> {
+  const response = await fetch(`${API_BASE}/api/epg`);
   if (!response.ok) {
     throw new Error(`EPG request failed (${response.status})`);
   }
