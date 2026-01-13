@@ -1,0 +1,143 @@
+m3u:
+    max-connections: 10
+
+    sources:
+        greenarw_tv_italia:
+            descriptiotvgNo: "Greenarw TV Italia"
+            url: https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u
+            active: false
+        iptv_org_italiano:
+            descriptiotvgNo: "IPTV Org Italiano"
+            alternate: https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md
+            url: https://iptv-org.github.io/iptv/languages/ita.m3u
+            active: true
+
+xmltv:
+    sources:
+        it_dttsat_full:
+            descriptiotvgNo: "DTT SAT Italia Full EPG"
+            url: http://116.202.210.205/test/it_dttsat_full.xml
+            active: true
+
+tabs:
+    Italia:
+        include:
+            - Rai 1:
+                  tvgNo: 1
+            - Rai 2:
+                  tvgNo: 2
+            - Rai 3:
+                  tvgNo: 3
+            - Rete4:
+                  tvgNo: 4
+            - Canale5:
+                  tvgNo: 5
+            - Italia1:
+                  tvgNo: 6
+            - /^LA7/$:
+                  tvgNo: 7
+            - TV8:
+                  tvgNo: 8
+            - NOVE:
+                  tvgNo: 9
+            - La5:
+                  tvgNo: 10
+            - /^LA7d$/:
+                  tvgNo: 11
+            - Iris:
+                  tvgNo: 12
+            - Cielo:
+                  tvgNo: 13
+            - Rai Movie:
+                  tvgNo: 14
+            - Rai Premium:
+                  tvgNo: 15
+            - Rai Storia:
+                  tvgNo: 16
+            - Rai Sport:
+                  tvgNo: 17
+            - Rai Scuola:
+                  tvgNo: 18
+            - 20Mediaset:
+                  tvgNo: 20
+            - Mediaset Extra:
+                  tvgNo: 21
+            - Mediaset Italia2:
+                  tvgNo: 22
+            - GIALLO:
+                  tvgNo: 23
+            - TOPcrime:
+                  tvgNo: 24
+            - TwentysevetvgNo:
+                  tvgNo: 27
+            - Cine34:
+                  tvgNo: 34
+            - Focus:
+                  tvgNo: 35
+            - Real Time:
+                  tvgNo: 36
+            - QVC:
+                  tvgNo: 37
+            - Food Network:
+                  tvgNo: 38
+            - Warner TV:
+                  tvgNo: 39
+            - RaiPlay:
+                  tvgNo: 40
+            - DMAX:
+                  tvgNo: 41
+            - Italia 53:
+                  tvgNo: 42
+            - SPORTITALIA:
+                  tvgNo: 43
+            - SUPERTENNIS:
+                  tvgNo: 44
+            - VH1:
+                  tvgNo: 45
+            - Warner TV:
+                  tvgNo: 46
+            - ALMA TV:
+                  tvgNo: 47
+            - TV2000:
+                  tvgNo: 48
+
+    News_Italia:
+        include:
+            - Rai News 24
+            - TGCOM24
+            - Sky TG24
+            - Parlamento
+
+    Cartoni:
+        start: 200
+        include:
+            - Boing
+            - K2
+            - Rai Gulp
+            - Rai YoYo
+            - frisbee
+            - Boing Plus
+            - Cartoonito
+            - Super!
+    Radio:
+        start: 100
+        and: radio
+        include:
+            - Capital
+            - Deejay
+            - m2o
+            - RDS
+            - RTL
+            - zeta
+            - freccia
+            - 101
+            - monte carlo
+            - 105
+            - virgin
+            - Deejay
+            - italia
+
+    Altri:
+        start: 1000        
+        include:
+            - /.*/

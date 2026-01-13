@@ -1,143 +1,135 @@
 m3u:
-    max-connections: 10
-
-    sources:
-        greenarw_tv_italia:
-            descriptiotvg-no: "Greenarw TV Italia"
-            url: https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u
-            active: false
-        iptv_org_italiano:
-            descriptiotvg-no: "IPTV Org Italiano"
-            alternate: https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md
-            url: https://iptv-org.github.io/iptv/languages/ita.m3u
-            active: true
-
+  sources:
+    greenarw_tv_italia:
+      descriptiotvgNo: Greenarw TV Italia
+      url: https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u
+      active: false
+      proxied: false
+      threadfin: false
+    iptv_org_italiano:
+      descriptiotvgNo: IPTV Org Italiano
+      alternate: https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md
+      url: https://iptv-org.github.io/iptv/languages/ita.m3u
+      active: true
+      proxied: false
+      threadfin: false
+  max-connections: 10
 xmltv:
-    sources:
-        it_dttsat_full:
-            descriptiotvg-no: "DTT SAT Italia Full EPG"
-            url: http://116.202.210.205/test/it_dttsat_full.xml
-            active: true
-
+  sources:
+    it_dttsat_full:
+      descriptiotvgNo: DTT SAT Italia Full EPG
+      url: http://116.202.210.205/test/it_dttsat_full.xml
+      active: true
+      threadfin: false
 tabs:
-    Italia:
-        include:
-            - Rai 1:
-                  tvg-no: 1
-            - Rai 2:
-                  tvg-no: 2
-            - Rai 3:
-                  tvg-no: 3
-            - Rete4:
-                  tvg-no: 4
-            - Canale5:
-                  tvg-no: 5
-            - Italia1:
-                  tvg-no: 6
-            - /^LA7/$:
-                  tvg-no: 7
-            - TV8:
-                  tvg-no: 8
-            - NOVE:
-                  tvg-no: 9
-            - La5:
-                  tvg-no: 10
-            - /^LA7d$/:
-                  tvg-no: 11
-            - Iris:
-                  tvg-no: 12
-            - Cielo:
-                  tvg-no: 13
-            - Rai Movie:
-                  tvg-no: 14
-            - Rai Premium:
-                  tvg-no: 15
-            - Rai Storia:
-                  tvg-no: 16
-            - Rai Sport:
-                  tvg-no: 17
-            - Rai Scuola:
-                  tvg-no: 18
-            - 20Mediaset:
-                  tvg-no: 20
-            - Mediaset Extra:
-                  tvg-no: 21
-            - Mediaset Italia2:
-                  tvg-no: 22
-            - GIALLO:
-                  tvg-no: 23
-            - TOPcrime:
-                  tvg-no: 24
-            - Twentysevetvg-no:
-                  tvg-no: 27
-            - Cine34:
-                  tvg-no: 34
-            - Focus:
-                  tvg-no: 35
-            - Real Time:
-                  tvg-no: 36
-            - QVC:
-                  tvg-no: 37
-            - Food Network:
-                  tvg-no: 38
-            - Warner TV:
-                  tvg-no: 39
-            - RaiPlay:
-                  tvg-no: 40
-            - DMAX:
-                  tvg-no: 41
-            - Italia 53:
-                  tvg-no: 42
-            - SPORTITALIA:
-                  tvg-no: 43
-            - SUPERTENNIS:
-                  tvg-no: 44
-            - VH1:
-                  tvg-no: 45
-            - Warner TV:
-                  tvg-no: 46
-            - ALMA TV:
-                  tvg-no: 47
-            - TV2000:
-                  tvg-no: 48
-
-    News_Italia:
-        include:
-            - Rai News 24
-            - TGCOM24
-            - Sky TG24
-            - Parlamento
-
-    Cartoni:
-        start: 200
-        include:
-            - Boing
-            - K2
-            - Rai Gulp
-            - Rai YoYo
-            - frisbee
-            - Boing Plus
-            - Cartoonito
-            - Super!
-    Radio:
-        start: 100
-        and: radio
-        include:
-            - Capital
-            - Deejay
-            - m2o
-            - RDS
-            - RTL
-            - zeta
-            - freccia
-            - 101
-            - monte carlo
-            - 105
-            - virgin
-            - Deejay
-            - italia
-
-    Altri:
-        start: 1000        
-        include:
-            - /.*/
+  Italia:
+    include:
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+      - match: /(?:)/
+  News_Italia:
+    include:
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+  Cartoni:
+    start: 200
+    include:
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+  Radio:
+    start: 100
+    and: radio
+    include:
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /(?:)/
+      - match: /function match() { [native code] }/
+      - match: /(?:)/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+      - match: /function match() { [native code] }/
+  Altri:
+    start: 1000
+    include:
+      - match: /function match() { [native code] }/
+paths:
+  public: /home/kali/omai/iptv/backend/app/public
+  frontend: /home/kali/omai/iptv/backend/app/public/dist
+  cached: /home/kali/omai/iptv/backend/app/public/cached
+  data: /home/kali/omai/iptv/backend/app/data
+  channels:
+    db: /home/kali/omai/iptv/backend/app/data/channels.json
+  logs:
+    dir: /home/kali/omai/iptv/backend/app/data/logs
+  images:
+    dir: /home/kali/omai/iptv/backend/app/public/cached/images
+    web: /cached/images/
+  streams:
+    dir: /home/kali/omai/iptv/backend/app/public/cached/streams
+    web: /cached/streams/
+streamlink:
+  userAgent: Threadfin
+address: 0.0.0.0
+port: 3005
+locale: it-IT
+maxStreams: 4
+epgCacheDuration: 3600000
+streamCleanupInterval: 30000
+streamInactivityTimeout: 10000
+tunerReleaseTimeout: 15000
+ffmpeg:
+  hlsTime: 4
+  hlsListSize: 8
+  preset: veryfast
+  framerate: 50
+  gopSize: 100
+  audioBitrate: 128k

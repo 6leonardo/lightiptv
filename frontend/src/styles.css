@@ -312,6 +312,18 @@ body {
   text-transform: uppercase;
   color: var(--accent-2);
 }
+.channel-grid-tab {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+.channel-grid-tab-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 0.5em 0 0 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 0.5em;
+
+}
 
 .channel-grid {
   display: grid;

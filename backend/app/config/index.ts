@@ -353,6 +353,7 @@ class Config {
 
 const config = new Config();
 await config.load();
+await config.save();
 export const getConfig = () => config.getConfig();
 export const saveConfig = () => config.save();
 

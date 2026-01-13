@@ -56,6 +56,15 @@ export async function fetchChannels(): Promise<ChannelsResponse> {
   return response.json();
 }
 
+export async function fetchTabs(): Promise<{ tabs: Record<string, string[]> }> {
+  const response = await fetch(`${API_BASE}/api/tabs`);
+  if (!response.ok) {
+    throw new Error(`Tabs request failed (${response.status})`);
+  }
+  return response.json();
+}
+
+
 export async function fetchConfig(): Promise<ConfigResponse> {
   const response = await fetch(`${API_BASE}/api/config`);
   if (!response.ok) {

@@ -4,7 +4,7 @@ import EpgGrid from "./components/EpgGrid";
 import PlayerOverlay from "./components/PlayerOverlay";
 import ZappingPlayer from "./components/ZappingPlayer";
 import { useZappingService } from "./services/zappingService";
-import { fetchChannels, fetchConfig, fetchEpgGrid } from "./api";
+import { fetchChannels, fetchConfig, fetchEpgGrid, fetchTabs } from "./api";
 import { markImageFailed } from "./utils/imageStore";
 import { useFailedImages } from "./hooks/useFailedImages";
 import type { ChannelFrontend, ProgramFrontend } from "./api";
@@ -58,6 +58,7 @@ function NowPlayingCard({ channel, program, locale, onSelect }: NowPlayingCardPr
 export default function App() {
     const [channels, setChannels] = useState<Record<string, ChannelFrontend>>({});
     const [programs, setPrograms] = useState<Record<string, ProgramFrontend[]>>({});
+    const [tabs, setTabs] = useState<Record<string, string[]>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -76,9 +77,10 @@ export default function App() {
 
     const loadData = useCallback(async () => {
         try {
-            const [epg, channelData, config] = await Promise.all([fetchEpgGrid(), fetchChannels(), fetchConfig()]);
+            const [epg, channelData, config, tabsData] = await Promise.all([fetchEpgGrid(), fetchChannels(), fetchConfig(), fetchTabs()]);
             setChannels(channelData.channels);
             setPrograms(epg.programs);
+            setTabs(tabsData.tabs);
             setLocale(config.locale || "it-IT");
             setUpdatedAt(new Date());
             setError(null);
@@ -174,7 +176,7 @@ export default function App() {
             ) : view === "channels" ? (
                 <main className="app-main app-main-full">
                     <div className="app-epg-panel" style={{ overflowY: "auto", overflowX: "hidden" }}>
-                        <ChannelGrid channels={filteredChannels} programs={programs} onSelect={setActiveChannel} />
+                        <ChannelGrid channels={filteredChannels} tabs={tabs} programs={programs} onSelect={setActiveChannel} />
                     </div>
                 </main>
             ) : view === "now" ? (

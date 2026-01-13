@@ -1,20 +1,15 @@
 import React, { useMemo } from "react";
 import type { ChannelFrontend, ProgramFrontend } from "../api";
-import { getBadgeColor, getChannelBadge } from "../utils/channelBadge";
-
-function formatTime(date: Date) {
-    const h = date.getHours().toString().padStart(2, "0");
-    const m = date.getMinutes().toString().padStart(2, "0");
-    return `${h}:${m}`;
-}
+import { ChannelCard } from "./ChannelCard";
 
 type ChannelGridProps = {
     channels: ChannelFrontend[];
+    tabs?: Record<string, string[]>;
     programs: Record<string, ProgramFrontend[]>;
     onSelect: (channel: ChannelFrontend) => void;
 };
 
-export default function ChannelGrid({ channels, programs, onSelect }: ChannelGridProps) {
+export default function ChannelGrid({ channels, tabs, programs, onSelect }: ChannelGridProps) {
     const now = new Date();
 
     const programMap = useMemo(() => {
@@ -31,41 +26,44 @@ export default function ChannelGrid({ channels, programs, onSelect }: ChannelGri
         }
         return map;
     }, [programs, now]);
-    
+
     return (
-        <div className="channel-grid">
-            {channels.map((channel) => {
-                const current = programMap.get(channel.epgKey);
-                return (
-                    <button
-                        key={channel.tvgId}
-                        className="channel-card"
-                        onClick={() => onSelect(channel)}
-                        type="button"
-                    >
-                        {channel.isStreaming && <span className="channel-live-dot" />}
-                        {channel.logo ? (
-                            <img src={channel.logo} alt={channel.name} className="channel-card-logo" />
-                        ) : (
-                            <div
-                                className="channel-card-logo placeholder"
-                                style={{ color: getBadgeColor(channel.name) }}
-                            >
-                                {getChannelBadge(channel.name)}
-                            </div>
-                        )}
-                        <div className="channel-card-name">{channel.name}</div>
-                        {current && (
-                            <div className="channel-card-epg">
-                                <span>
-                                    {formatTime(new Date(current.start))} - {formatTime(new Date(current.end))}
-                                </span>
-                                <strong>{current.title}</strong>
-                            </div>
-                        )}
-                    </button>
-                );
-            })}
-        </div>
-    );
-}
+        <>
+            {tabs &&
+                Object.keys(tabs).length > 0 &&
+                Object.keys(tabs).map((tabName) => (
+                    <div key={tabName} className="channel-grid-tab">
+                        <h2 className="channel-grid-tab-title">{tabName}</h2>
+                        <div className="channel-grid">
+                            {tabs[tabName].map((channelName) => {
+                                const channel = channels.find(
+                                    (ch) => ch.name.toLocaleLowerCase() === channelName.toLocaleLowerCase()
+                                );
+                                if (!channel) return null;
+                                return (
+                                    <ChannelCard
+                                        key={channel.id}
+                                        channel={channel}
+                                        program={programMap.get(channel.epgKey) || null}
+                                        onSelect={onSelect}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
+            {!(tabs && Object.keys(tabs).length > 0) &&
+                channels.map((channel) => {
+                    return (
+                        <div className="channel-grid">
+                            <ChannelCard
+                                key={channel.tvgId}
+                                channel={channel}
+                                program={programMap.get(channel.epgKey) || null}
+                                onSelect={onSelect}
+                            />
+                        </div>
+                    );
+                })}
+        </>
+    )}

@@ -533,6 +533,7 @@ class ChannelService {
     }
 
     patchChannels() {
+        this.db.tabs = {};
         if (!config.tabs) return;
         const tabs = config.tabs;
         const cTabs: Record<string, ChannelRecord[]> = {};
@@ -588,7 +589,7 @@ class ChannelService {
                 const selected = new Set(<string[]>[]);
                 const merged: ChannelRecord[] = [];
                 for (const ch of cTabs[tab.name]) {
-                    if (!selected.has(ch.name)) 
+                    if (selected.has(ch.name)) 
                         continue;
                     merged.push(ch);
                     selected.add(ch.name);
@@ -600,8 +601,12 @@ class ChannelService {
         }
         this.db.tabs = {};
         for (const [tabName, channels] of Object.entries(cTabs)) {
-            this.db.tabs[tabName] = channels.map(ch => ch.id);
+            this.db.tabs[tabName] = channels.map(ch => ch.name);
         }              
+    }
+
+    getTabs(): Record<string, string[]> {
+        return this.db.tabs;
     }
 }
 
