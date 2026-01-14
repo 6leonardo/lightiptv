@@ -8,13 +8,14 @@ export type ConfigResponse = {
 export interface ChannelFrontend {
     id: string;
     tvgId: string;
-    chno: string | null;
+    tvgNo: string | null;
     name: string;
     stream: string;
     logo: string | null;
     group: string;
     epgKey: string;
     isStreaming: boolean;
+    extra: Record<string, string>;
 }
 
 export interface ProgramFrontend {

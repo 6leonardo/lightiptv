@@ -63,7 +63,7 @@ app.use(config.paths.images.web, async (req, res, next) => {
 	const image = req.path.replace(/^\//, '');
 	const imageMutex = getImageMutex(image);
 	await imageMutex.runExclusive(async () => {
-		if (await channelService.cacheProgramPreview(image)) {
+		if (await channelService.cacheProgramPreview(image)==="yes") {
 			res.sendFile(path.join(config.paths.images.dir, image));
 		} else {
 			res.sendStatus(404);

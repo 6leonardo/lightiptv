@@ -33,6 +33,7 @@ export interface ChannelFrontend {
     group: string;
     epgKey: string;
     isStreaming: boolean;
+    extra: Record<string, string>;
 }
 
 export interface ProgramFrontend {
@@ -353,10 +354,12 @@ class ChannelService {
         return `${domain}-${crypto.createHash('md5').update(`${schedule.start.toISOString()}`).digest('hex')}.${type}`;
     }
 
-    getProgramFromUrl(cryptFilename: string): ProgramRecord | undefined {
-        const [domain, _] = cryptFilename.split('-');
+    getProgramFromUrl(cryptFilename: string): { channel: boolean, program: ProgramRecord | undefined } {
+        const [domain, nodomain] = cryptFilename.split('-');
+        if (!nodomain)
+            return { channel: true, program: undefined };
         const programs = this.db.programs[domain] || [];
-        return programs.find(prog => prog?.previewImagePath === cryptFilename);
+        return {channel: false, program: programs.find(prog => prog?.previewImagePath === cryptFilename)};
     }
 
     waitingDomains = new Map<string, { stop: number, lastRequest: number, sleep: number }>();
@@ -390,6 +393,7 @@ class ChannelService {
                     await new Promise(resolve => setTimeout(resolve, waitTime));
                     count++;
                 } else {
+                    console.log(`Fetched image from ${url} with status ${response.status}`);
                     if (this.waitingDomains.has(domain)) {
                         const times = this.waitingDomains.get(domain)!;
                         times.stop = 0;
@@ -408,13 +412,16 @@ class ChannelService {
             fs.writeFileSync(path.join(config.paths.images.dir, filename), response.data);
             return { filename, status: response.status };
         } catch (error) {
-            process.stdout.write('Error fetching image: ' + (error as Error).message + '\r');
+            //process.stdout.write('Error fetching image: ' + (error as Error).message + '\r');
+            console.error('Error fetching image:', (error as Error).message);
             return { filename: null, status: 0 }
         }
     }
 
     async cacheProgramPreview(imageUrl: string): Promise<'yes' | 'no' | 'not-exists'> {
-        const program = this.getProgramFromUrl(imageUrl);
+        const { channel, program } = this.getProgramFromUrl(imageUrl);
+        if( channel)
+            return 'yes'
         if (!program)
             return 'no'
         if (program.previewImageFetched === 'no') {
@@ -502,6 +509,7 @@ class ChannelService {
                 stream: ch.stream,
                 logo: !ch.logoCachedPath ? null : path.join(config.paths.images.web, ch.logoCachedPath),
                 group: ch.group || '',
+                extra: ch.extra || {},
                 epgKey: ch.epgKey || '',
                 isStreaming: ch.isActive || false
             });
@@ -525,7 +533,7 @@ class ChannelService {
                 title: prog.title,
                 desc: prog.desc,
                 category: prog.category,
-                preview: prog.previewImagePath ? path.join(config.paths.images.web, prog.previewImagePath) : null
+                preview: prog.previewImagePath && prog.previewImageFetched!=="not-exists" ? path.join(config.paths.images.web, prog.previewImagePath) : null
             }));
         }
         this.database.cache.epg = epg;

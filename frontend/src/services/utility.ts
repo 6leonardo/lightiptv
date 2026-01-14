@@ -29,18 +29,44 @@ function getNowPlaying(channels: ChannelFrontend[], programs: Record<string, Pro
 }
 
 function getFilteredChannels(channels: Record<string, ChannelFrontend>, filter: string, programs: Record<string, ProgramFrontend[]> = {}, onlyEpg: boolean = false): ChannelFrontend[] {
-    const isGroupFilter = filter.trim().toLocaleLowerCase().startsWith('g:');
-    if (isGroupFilter) {
-        const regex = new RegExp(filter.trim().slice(2).trim(), 'i');
-        return Object.values(channels).filter(channel => regex.test(channel.group) && (!onlyEpg || channel.epgKey in programs));
-    } else {
-        const regex = new RegExp(filter.trim(), 'i');
-        return Object.values(channels).filter(channel => regex.test(channel.name) && (!onlyEpg || channel.epgKey in programs));
+    try {
+        const fex = /(?:^|\s)(?<type>[ngte]):(?<value>.*?)(?=\s+[ngte]:|$)/gi;
+        const match = Array.from(filter.matchAll(fex));
+        const exprs = match.length === 0 ? [{ type: 'n', value: filter }] : match.map(m => m.groups!);
+        onlyEpg = onlyEpg || exprs.some(expr => expr.type.toLocaleLowerCase() === 'e');
+        const rexs = exprs.map(expr =>
+            (expr.type && expr.type.toLocaleLowerCase() !== 'e' && expr.value ? { type: expr.type.toLocaleLowerCase(), rex: new RegExp(expr.value.trim(), 'i') } : null)).filter(Boolean);
+
+        return Object.values(channels).filter(channel => rexs.every(e =>
+            e?.type == 'n' && e.rex.test(channel.name) ||
+            e?.type == 'g' && e.rex.test(channel.group) ||
+            e?.type == 't' && channel.extra.tab && e.rex.test(channel.extra.tab)) && (!onlyEpg || channel.epgKey in programs));
+    }
+    catch (error) {
+        console.error('Error in getFilteredChannels:', (error as Error).message);
+        if (onlyEpg) {
+            return Object.values(channels).filter(channel => channel.epgKey in programs);
+        } else {
+            return Object.values(channels);
+        }
     }
 }
 
+function getGroups(channels: ChannelFrontend[]): string[] {
+    const groups = new Set<string>();
+    for (const channel of channels) 
+        if (channel.group) 
+            channel.group.replace(/,:/g, ';').split(';').map(g => g.trim()).forEach(g => g && groups.add(g));
+    
+    return Array.from(groups).sort();
+}
+
+function getTabChannels(channels: ChannelFrontend[], tabChannels: string[]): ChannelFrontend[] {
+    return tabChannels.map(name => channels.find((ch) => ch.name.toLocaleLowerCase() === name.toLocaleLowerCase())!).filter(Boolean);
+}
+
 function getEpgChannels(channels: ChannelFrontend[], programs: Record<string, ProgramFrontend[]>): ChannelFrontend[] {
-    return channels.filter(channel => channel.epgKey in programs);
+    return channels.filter(channel => channel.epgKey in programs && programs[channel.epgKey].length > 5).sort((a, b) => parseInt(a.tvgNo || "10000") - parseInt(b.tvgNo || "10000"));
 }
 
 function getEpgPrograms(channels: ChannelFrontend[], programs: Record<string, ProgramFrontend[]>): Record<string, ProgramFrontend[]> {
@@ -55,4 +81,4 @@ function getEpgPrograms(channels: ChannelFrontend[], programs: Record<string, Pr
 
 
 
-export { getNowPlaying, getFilteredChannels, getEpgChannels, getEpgPrograms };
+export { getNowPlaying, getFilteredChannels, getEpgChannels, getEpgPrograms, getGroups, getTabChannels };

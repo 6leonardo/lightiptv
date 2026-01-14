@@ -7,7 +7,7 @@ import { getSocket } from "../socket";
 const START_CHANNEL_NAME = "Rai 1";
 const HEARTBEAT_INTERVAL = 5000;
 const STATUS_POLL_INTERVAL = 1000;
-const MAX_ATTEMPTS = 30;
+const MAX_ATTEMPTS = 20;
 
 type ZappingState = {
     channel: ChannelFrontend;
@@ -268,7 +268,7 @@ export function useZappingService(channels: ChannelFrontend[], zapInterval = 10)
         return () => {
             if (zapTimerRef.current) window.clearTimeout(zapTimerRef.current);
         };
-    }, [active, current?.channel, warming, pickNextChannel, warmAndPromote, zapInterval]);
+    }, [active, current?.channel, /*warming,*/ pickNextChannel, warmAndPromote, zapInterval]);
 
     useEffect(() => {
         const socket = socketRef.current;

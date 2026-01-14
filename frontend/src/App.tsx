@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ChannelGrid from "./components/ChannelGrid";
+import FilterPanel from "./components/FilterPanel";
 import EpgGrid from "./components/EpgGrid";
 import PlayerOverlay from "./components/PlayerOverlay";
 import ZappingPlayer from "./components/ZappingPlayer";
@@ -9,7 +10,7 @@ import { markImageFailed } from "./utils/imageStore";
 import { useFailedImages } from "./hooks/useFailedImages";
 import type { ChannelFrontend, ProgramFrontend } from "./api";
 import { useSocketUpdates } from "./hooks/useSocketUpdates";
-import { getNowPlaying, getEpgChannels, getEpgPrograms, getFilteredChannels } from "./services/utility";
+import { getNowPlaying, getEpgChannels, getEpgPrograms, getFilteredChannels, getGroups } from "./services/utility";
 
 const EPG_HOURS_AHEAD = 24;
 
@@ -58,6 +59,7 @@ function NowPlayingCard({ channel, program, locale, onSelect }: NowPlayingCardPr
 export default function App() {
     const [channels, setChannels] = useState<Record<string, ChannelFrontend>>({});
     const [programs, setPrograms] = useState<Record<string, ProgramFrontend[]>>({});
+    const [groups, setGroups] = useState<string[]>([]);
     const [tabs, setTabs] = useState<Record<string, string[]>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -78,10 +80,12 @@ export default function App() {
     const loadData = useCallback(async () => {
         try {
             const [epg, channelData, config, tabsData] = await Promise.all([fetchEpgGrid(), fetchChannels(), fetchConfig(), fetchTabs()]);
+            //console.log("Fetched config:", channelData.channels);
             setChannels(channelData.channels);
             setPrograms(epg.programs);
             setTabs(tabsData.tabs);
             setLocale(config.locale || "it-IT");
+            setGroups(getGroups(Object.values(channelData.channels)));
             setUpdatedAt(new Date());
             setError(null);
         } catch (err) {
@@ -130,7 +134,7 @@ export default function App() {
         <div className="app-shell">
             <header className="app-header">
                 <div>
-                    <h1>IPTV EPG</h1>
+                    <h1>Light IPTV</h1>
                     <p>{subtitle}</p>
                 </div>
                 {/* <div className="app-badge">Prossime {EPG_HOURS_AHEAD}h</div> */}
@@ -176,6 +180,7 @@ export default function App() {
             ) : view === "channels" ? (
                 <main className="app-main app-main-full">
                     <div className="app-epg-panel" style={{ overflowY: "auto", overflowX: "hidden" }}>
+                        <FilterPanel groups={groups} tabs={Object.keys(tabs)} setFilter={setFilterText} />
                         <ChannelGrid channels={filteredChannels} tabs={tabs} programs={programs} onSelect={setActiveChannel} />
                     </div>
                 </main>
@@ -184,7 +189,7 @@ export default function App() {
                     <div className="app-epg-panel" style={{ overflowY: "auto" }}>
                         <div className="now-playing-header">Now Playing</div>
                         <div className="now-playing-grid">
-                            {Array.from(filteredNowPlaying.channels.values()).map((channel) => {
+                            {Array.from(filteredNowPlaying.channels.values()).sort((a, b) => parseInt(a.tvgNo || "10000") - parseInt(b.tvgNo || "10000")).map((channel) => {
                                 const program = filteredNowPlaying.programs.get(channel.id);
                                 if (!program || !program.preview) return null;
                                 return (

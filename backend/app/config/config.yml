@@ -160,7 +160,7 @@ tabs:
     include:
       - match: Pluto
 
-  Eductation:
+  Education:
     start: 600
     groups:
       include:

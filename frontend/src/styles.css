@@ -361,10 +361,62 @@ body {
   height: 110px;
   object-fit: contain;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.7);
   padding: 10px;
+  mix-blend-mode: hard-light;
 }
 
+.css-lmavdd-ChannelLogo {
+    height: 60px;
+    width: 60px;
+    position: relative;
+    background: rgba(255, 255, 255, 0.7);
+    mix-blend-mode: hard-light;
+    padding: 5px;
+    border-radius: 5px;
+    object-fit: contain;
+}
+
+.filter-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.filter-section {
+  display: flex;
+  font-family: Arial, Helvetica, sans-serif;
+  align-items: start;
+  gap: 8px;
+}
+
+.filter-block {
+  display: flex;
+  font-family: Arial, Helvetica, sans-serif;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 8px;
+}
+
+
+.filter-section h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-width: 5em;
+  }
+.filter-section button {
+  font-size: 0.8rem;  
+  color: var(--accent);
+  font-weight: normal;
+  background-color: transparent;
+  border: none;
+  padding: 0px;
+  margin: 0;
+}
 .channel-card-logo.placeholder {
   display: flex;
   align-items: center;
