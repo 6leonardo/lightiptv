@@ -1,85 +1,58 @@
 # LightIPTV - Web IPTV Viewer
 
-A lightweight web IPTV viewer designed to work in cascade with **Threadfin**, perfect for testing playlists or light browser-based viewing.
+A lightweight web IPTV viewer for direct M3U + XMLTV sources, perfect for testing playlists or light browser-based viewing.
 
 ## ⚠️ Important Note
 
 **This is not a full-featured IPTV client** but rather a testing/light viewing tool. It uses minimal infrastructure to stream IPTV channels via web browser. Ideal for debugging, quick tests, or occasional use.
 
-## 🔧 Requirements: Threadfin
+## 🔧 Configuration
 
-LightIPTV uses Threadfin **only as a URL resolver** for M3U and XMLTV:
-- It reads the original M3U playlist
-- It reads the XMLTV EPG
-- It does **not** use Threadfin as a streaming proxy (no VLC proxy)
+The app is configured via `backend/app/config/config.yml`. This file defines:
+- M3U sources and max connections
+- XMLTV sources
+- Channel tabs/groups and matching rules
 
 ## 🐳 Docker Hub
 
 Image available on Docker Hub: **`astevani/lightiptv:latest`** (amd64)
 
-## 📦 Complete Setup with Threadfin
+## 📦 Docker Compose
 
 ### docker-compose.yml
 
 ```yaml
-networks:
-  tvstack:
-    driver: bridge
-
 services:
-  threadfin:
-    image: fyb3roptik/threadfin
-    container_name: threadfin
-    hostname: threadfin
-    restart: unless-stopped
-    ports:
-      - "34400:34400"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Rome
-    volumes:
-      - ./threadfin/conf:/home/threadfin/conf
-      - ./threadfin/temp:/tmp/threadfin:rw
-    networks:
-      - tvstack
-
   lightiptv:
     image: astevani/lightiptv:latest
     container_name: lightiptv
     restart: unless-stopped
     ports:
       - "3005:3005"
-    environment:
-      # Internal URLs to Threadfin (same Docker network)
-      - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
-      - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
-      - PORT=3005
     volumes:
       - ./data:/app/app/data
       - ./cache:/app/app/public/cached
-    networks:
-      - tvstack
-    depends_on:
-      - threadfin
+      - ./backend/app/config/config.yml:/app/app/config/config.yml
 ```
 
 ### Environment Variables
 
-#### Required
-- **`THREADFIN_M3U_URL`**: URL of Threadfin's M3U playlist (used only to resolve stream URLs)
-- **`THREADFIN_XMLTV_URL`**: URL of Threadfin's XMLTV EPG (used only for EPG data)
-
 #### Optional
+- **`ADDRESS`**: bind address (default: `0.0.0.0`)
 - **`PORT`**: LightIPTV server port (default: `3005`)
 - **`MAX_STREAMS`**: Maximum concurrent active streams (default: `2`, use `0` for unlimited)
+- **`LOCALE`**: locale for time formatting (default: `it-IT`)
+- **`EPG_CACHE_DURATION`**: cache duration in ms (default: `3600000`)
+- **`STREAM_CLEANUP_INTERVAL`**: cleanup interval in ms (default: `30000`)
+- **`STREAM_INACTIVITY_TIMEOUT`**: inactivity timeout in ms (default: `10000`)
+- **`TUNER_RELEASE_TIMEOUT`**: tuner release timeout in ms (default: `15000`)
+- **`STREAMLINK_USER_AGENT`**: user-agent for Streamlink
+- **`FFMPEG_HLS_TIME`**, **`FFMPEG_HLS_LIST_SIZE`**, **`FFMPEG_PRESET`**, **`FFMPEG_FRAMERATE`**, **`FFMPEG_GOP_SIZE`**, **`FFMPEG_AUDIO_BITRATE`**
 
 #### Example Configuration
 
 ```yaml
 environment:
-  - THREADFIN_M3U_URL=http://threadfin:34400/m3u/threadfin.m3u
-  - THREADFIN_XMLTV_URL=http://threadfin:34400/xmltv/threadfin.xml
   - PORT=3005
   - MAX_STREAMS=2
 ```
@@ -88,6 +61,39 @@ environment:
 
 - **`./data:/app/app/data`**: Persisted app data (channels, logs, etc.)
 - **`./cache:/app/app/public/cached`**: Cached assets and HLS segments
+- **`./backend/app/config/config.yml:/app/app/config/config.yml`**: App configuration
+
+## 🧩 Config file (config.yml)
+
+The configuration is defined in `backend/app/config/config.yml`.
+
+```yaml
+m3u:
+  max-connections: 10
+  sources:
+    iptv_org_italiano:
+      description: "IPTV Org Italiano"
+      url: https://iptv-org.github.io/iptv/languages/ita.m3u
+      active: true
+
+xmltv:
+  sources:
+    it_dttsat_full:
+      description: "DTT SAT Italia Full EPG"
+      url: http://116.202.210.205/test/it_dttsat_full.xml
+      active: true
+
+tabs:
+  Italia:
+    include:
+      - match: Rai 1
+        tvgNo: 1
+```
+
+Notes:
+- Set `active: true/false` to enable or disable a source.
+- `tabs` lets you group channels using `match` (string or `/regex/`) and optional properties like `tvgNo`, `logo`, `group`.
+- `groups` and `sources` blocks can include/exclude by group/source name.
 
 ### 🛠 Customizing FFmpeg Transcoding
 
@@ -100,7 +106,7 @@ const CONFIG = require('../config');
 
 module.exports = function (filename, streamUrl) {
   return [
-    '-user_agent', 'Threadfin',
+    '-user_agent', 'LightIPTV',
     '-fflags', '+genpts',
     '-avoid_negative_ts', 'make_zero',
     '-i', streamUrl,
@@ -200,12 +206,7 @@ The log updates in real-time during stream preparation and remains available dur
 - **Stream sharing**: Reuses same FFmpeg process for identical URLs
 - **Stream limit**: Configurable max concurrent streams (default: 2)
 - **Auto-cleanup**: Inactive streams terminated after 60 seconds
-- **EPG cache**: 1-hour cache duration to reduce Threadfin calls
-
-## ✅ Threadfin usage model
-
-- Threadfin is **not** used as a streaming proxy.
-- LightIPTV pulls M3U/XMLTV from Threadfin and streams directly from the resolved URLs.
+- **EPG cache**: 1-hour cache duration to reduce upstream calls
 
 ## 🎯 Recommended Use Cases
 

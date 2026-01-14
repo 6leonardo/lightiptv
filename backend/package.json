@@ -1,7 +1,7 @@
 {
   "name": "lightiptv",
   "version": "1.0.0",
-  "description": "Lightweight web IPTV viewer for Threadfin",
+  "description": "Lightweight web IPTV viewer for M3U + XMLTV sources",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -14,7 +14,6 @@
     "iptv",
     "m3u",
     "express",
-    "threadfin",
     "hls",
     "ffmpeg"
   ],

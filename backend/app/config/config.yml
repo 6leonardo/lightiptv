@@ -3,21 +3,24 @@ m3u:
 
   sources:
     greenarw_tv_italia:
-      descriptiotvgNo: "Greenarw TV Italia"
+      description: "Greenarw TV Italia"
       url: https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u
       active: false
+
     iptv_org_italiano:
-      descriptiotvgNo: "IPTV Org Italiano"
+      description: "IPTV Org Italiano"
       alternate: https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md
       url: https://iptv-org.github.io/iptv/languages/ita.m3u
       active: true
 
+
 xmltv:
   sources:
     it_dttsat_full:
-      descriptiotvgNo: "DTT SAT Italia Full EPG"
+      description: "DTT SAT Italia Full EPG"
       url: http://116.202.210.205/test/it_dttsat_full.xml
       active: true
+
 
 tabs:
   Italia:
@@ -34,7 +37,7 @@ tabs:
         tvgNo: 5
       - match: Italia 1
         tvgNo: 6
-      - match: /^LA7/$
+      - match: /^LA7$/
         tvgNo: 7
       - match: TV8
         tvgNo: 8
@@ -78,8 +81,6 @@ tabs:
         tvgNo: 36
       - match: QVC
         tvgNo: 37
-      - match: Food Network
-        tvgNo: 38
       - match: Warner TV
         tvgNo: 39
       - match: RaiPlay
@@ -94,23 +95,25 @@ tabs:
         tvgNo: 44
       - match: VH1
         tvgNo: 45
-      - match: Warner TV
-        tvgNo: 46
       - match: ALMA TV
         tvgNo: 47
       - match: TV2000
         tvgNo: 48
 
-  News_Italia:
+
+  News:
     start: 50
     groups:
       include:
         - match: news
     include:
       - match: Rai News 24
+        tvgNo: 50
       - match: TGCOM 24
+        tvgNo: 51
       - match: Sky TG24
-      - match: Parlamento
+        tvgNo: 52
+      - match: /.*/
 
   Cartoni:
     start: 200
@@ -123,9 +126,13 @@ tabs:
       - match: Boing Plus
       - match: Cartoonito
       - match: Super!
-  Radio:
-    start: 100
-    and: radio
+
+
+  Radio-1:
+    temp: true
+    properties:
+      group: music    
+    and: Radio
     include:
       - match: Capital
       - match: Deejay
@@ -136,14 +143,36 @@ tabs:
       - match: freccia
       - match: 101
       - match: monte carlo
+      - match: 102.5
       - match: 105
       - match: virgin
-      - match: Deejay
       - match: italia
+      - match: /.*/
+
+  Radio:
+    start: 100
+    groups:
+      include:
+        - match: Music
+
+  Pluto:
+    start: 400
+    include:
+      - match: Pluto
+
+  Eductation:
+    start: 600
+    groups:
+      include:
+        - match: Educa
+        - match: Documen
+
+
+  General:
+    groups:
+      include:
+        - match: general
 
   Altri:
     start: 1000
-    missingx: true
-    sources:
-      include: 
-        - match: pippo
+    missing: true

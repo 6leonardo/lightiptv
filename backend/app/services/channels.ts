@@ -449,7 +449,7 @@ class ChannelService {
             console.log('Updating schedules...');
             await this.updateSchedules();
             console.log('Updating images...');
-            //await this.updateImages();
+            await this.updateImages();
             console.log('Patching channels...');
             this.patchChannels();
             console.log('Finalizing updates...');
@@ -535,120 +535,100 @@ class ChannelService {
     patchChannels() {
         this.db.tabs = {};
         if (!config.tabs) return;
-        const tabs = config.tabs;
-        const cTabs: Record<string, ChannelRecord[]> = {};
+
         const allChannelNames = new Set<string>();
+        const cTabs: Record<string, ChannelRecord[]> = {};
+
+        const matchesAny = (arr: { match: RegExp }[] | undefined, value: string) =>
+            !arr || arr.some(m => m.match.test(value));
+
+        const matchesNone = (arr: { match: RegExp }[] | undefined, value: string) =>
+            !arr || !arr.some(m => m.match.test(value));
 
         const patch = (tab: Tab, channels: ChannelRecord[]) => {
-            let start = tab.start || 1;
-            let filteredChannels: ChannelRecord[] = channels.filter(ch => {
-                const source = this.db.sources[parseInt(ch.extra.source || '-1')]?.name || '';
-                if (tab.sources && tab.sources.include && !(tab.sources.include.every(item => item.match.test(source))))
-                    return false;
-                if (tab.sources && tab.sources.exclude && (tab.sources.exclude.every(item => item.match.test(source))))
-                    return false;
-                if (tab.groups && tab.groups.include && !(tab.groups.include.every(item => item.match.test(ch.group || ''))))
-                    return false;
-                if (tab.groups && tab.groups.exclude && (tab.groups.exclude.every(item => item.match.test(ch.group || ''))))
-                    return false;
-                if (tab.and && !(tab.and.test(ch.name)))
-                    return false;
-                if (tab.exclude && (tab.exclude.test(ch.name)))
-                    return false;
+            let start = tab.start ?? 1;
+
+            let filtered = channels.filter(ch => {
+                const source =
+                    this.db.sources[Number(ch.extra.source ?? -1)]?.name ?? '';
+
+                if (!matchesAny(tab.sources?.include, source)) return false;
+                if (!matchesNone(tab.sources?.exclude, source)) return false;
+
+                if (!matchesAny(tab.groups?.include, ch.group ?? '')) return false;
+                if (!matchesNone(tab.groups?.exclude, ch.group ?? '')) return false;
+
+                if (tab.and && !tab.and.test(ch.name)) return false;
+
+                if (!matchesNone(tab.exclude, ch.name)) return false;
+
                 return true;
             });
 
-            filteredChannels = filteredChannels.map(ch => {
-                if (tab.start)
-                    ch.tvgNo = (start++).toString();
+            filtered = filtered.filter(ch => {
+                if (!tab.include) return true;
 
-                if (tab.include) {
-                    for (const inc of tab.include) {
-                        if (inc.match.test(ch.name)) {
-                            if ((inc.properties && inc.properties.plain) || (tab.properties && tab.properties.plain)) {
-                                for (const [key, value] of Object.entries({ ...tab.properties?.plain, ...inc.properties?.plain }))
-                                    (ch as any)[key] = value;
-                            }
-                            if ((inc.properties && inc.properties.extra) || (tab.properties && tab.properties.extra)) {
-                                for (const [key, value] of Object.entries({ ...tab.properties?.extra, ...inc.properties?.extra }))
-                                    (ch.extra as any)[key] = value;
-                            }
-                            return ch;
-                        }
-                    }
-                    return false
-                }
-                return ch;
-            }).filter(c => c !== false) as ChannelRecord[];
+                const inc = tab.include.find(i => i.match.test(ch.name));
+                if (!inc) return false;
 
-            for (const ch of filteredChannels) {
-                ch.extra['tab'] = tab.name;
+                if (tab.start) ch.tvgNo = String(start++);
+
+                Object.assign(ch, {
+                    ...(tab.properties?.plain ?? {}),
+                    ...(inc.properties?.plain ?? {})
+                });
+
+                Object.assign(ch.extra, {
+                    ...(tab.properties?.extra ?? {}),
+                    ...(inc.properties?.extra ?? {})
+                });
+
+                return true;
+            });
+
+            for (const ch of filtered) {
+                ch.extra.tab = tab.name;
                 allChannelNames.add(ch.name);
             }
 
-            /*
-            merge di default abilitato per evitare duplicati
-            if (tab.merge || true) {
-                const selected = new Set<string>();
-                const merged: ChannelRecord[] = [];
-                for (const ch of filteredChannels) {
-                    if (selected.has(ch.name))
-                        continue;
-                    merged.push(ch);
-                    selected.add(ch.name);
-                }
-                filteredChannels = merged;
-            }
-            */
-
-            return filteredChannels;
-        }
+            return filtered;
+        };
 
         const tabOther = config.tabs.find(t => t.missing);
+        const temps: Set<string> = new Set(config.tabs.filter(t => t.temp).map(t => t.name));
 
-        for (const tab of tabs)
+        for (const tab of config.tabs)
             if (!tab.missing)
                 cTabs[tab.name] = patch(tab, Object.values(this.db.channels));
 
-
         if (tabOther) {
-            const otherChannels: Set<string> = new Set<string>();
-            for (const channelName of Object.values(this.db.channels).map(ch => ch.name)) {
-                if (allChannelNames.has(channelName))
-                    continue;
-                otherChannels.add(channelName);
-            }
-            cTabs[tabOther.name] = patch(tabOther, Array.from(otherChannels).map(name => this.db.decode[name.toLocaleLowerCase()]).flatMap(ids => ids.map(id => this.db.channels[id])));
+            const others = Object.values(this.db.channels).filter(
+                ch => !allChannelNames.has(ch.name)
+            );
+            cTabs[tabOther.name] = patch(tabOther, others);
         }
 
-
         const merge = (channels: ChannelRecord[]): string[] => {
-            const allWithNo = channels.every(ch => ch.tvgNo != null);
+            const withNo = channels.every(ch => ch.tvgNo != null);
 
-            if (allWithNo) {
-                const merged = new Map<string, number>();
-
+            if (withNo) {
+                const map = new Map<string, number>();
                 for (const ch of channels) {
-                    const no = typeof ch.tvgNo === "number" ? ch.tvgNo : Number(ch.tvgNo);
-                    if (!Number.isFinite(no)) continue; // oppure throw, a tua scelta
-
-                    const prev = merged.get(ch.name);
-                    merged.set(ch.name, prev !== undefined ? Math.min(prev, no) : no);
+                    const no = Number(ch.tvgNo);
+                    if (!Number.isFinite(no)) continue;
+                    map.set(ch.name, Math.min(map.get(ch.name) ?? no, no));
                 }
-
-                return [...merged.entries()]
+                return [...map.entries()]
                     .sort((a, b) => a[1] - b[1])
                     .map(([name]) => name);
             }
 
-            // ramo senza numeri: nomi unici in ordine alfabetico (come il tuo)
             return [...new Set(channels.map(ch => ch.name))].sort();
         };
 
-        this.db.tabs = {};
-        for (const [tabName, channels] of Object.entries(cTabs)) {
-            this.db.tabs[tabName] = merge(channels);
-        }
+        for (const [name, chans] of Object.entries(cTabs))
+            if (!temps.has(name))
+                this.db.tabs[name] = merge(chans);
     }
 
     getTabs(): Record<string, string[]> {

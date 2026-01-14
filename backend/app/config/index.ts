@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import dotenv from 'dotenv';
 import path from 'path';
 import URL from 'url';
+import { assert } from 'node:console';
 
 const __dirname = path.dirname(URL.fileURLToPath(import.meta.url));
 
@@ -93,18 +94,38 @@ export interface ConfigXMLTVSource {
     threadfin?: boolean;
 }
 
+export type Primitive = string | number | boolean;
+
+export interface Properties {
+    plain?: Record<string, Primitive>;
+    extra?: Record<string, Primitive>;
+}
+
+export interface Match {
+    match: RegExp;
+    properties?: Properties;
+}
+
+export interface MatchGroup {
+    include?: Match[];
+    exclude?: Match[];
+}
+
 export interface Tab {
     name: string;
     description?: string;
+    temp?: boolean
+    start?: number;
     merge?: boolean;
     missing?: boolean;
-    groups?: { include?: { match: RegExp }[], exclude?: { match: RegExp }[] };
-    sources?: { include?: { match: RegExp }[], exclude?: { match: RegExp }[] };
-    start?: number;
     and?: RegExp;
-    properties?: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> };
-    include?: { match: RegExp, properties?: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } }[];
-    exclude?: RegExp;
+
+    groups?: MatchGroup;
+    sources?: MatchGroup;
+
+    properties?: Properties;
+    include?: Match[];
+    exclude?: Match[];
 }
 
 
@@ -141,52 +162,74 @@ interface Config {
 };
 
 
-const toRegExp = (str: string): RegExp => {
-    if (/^\/.*\/$/.test(str)) {
-        const content = str.slice(1, -1);
-        return new RegExp(content, 'i');
-    } else {
-        return new RegExp(str, 'i');
+const toRegExp = (value: string): RegExp => {
+    if(typeof value !== 'string') {
+        value = String(value);
     }
-}
-
-const fromRegExp = (reg: RegExp): string => {
-    return reg.source;
-}
-
-const isExtraProperty = (prop: string): boolean => {
-    const standardProps = ['tvgNo', 'name', 'logo', 'group'];
-    return !standardProps.includes(prop);
-}
-
-const fromProperties = (prop: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> }): Record<string, string | number | boolean> | undefined => {
-    if (prop && (prop.plain || prop.extra)) {
-        const properties = { ...prop.extra, ...prop.plain };
-        return properties;
+    if (value.startsWith('/') && value.endsWith('/')) {
+        return new RegExp(value.slice(1, -1), 'i');
     }
-    return undefined;
-}
+    return new RegExp(value, 'i');
+};
 
-const toProperties = (properties: Record<string, string | number | boolean>) => {
-    if (!properties) return undefined;
-    const props: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } = { plain: {}, extra: {} };
-    for (const propKey in properties) {
-        if (propKey === 'match') continue;
-        if (isExtraProperty(propKey))
-            props.extra![propKey] = properties[propKey];
-        else
-            props.plain![propKey] = properties[propKey];
+const fromRegExp = (re: RegExp): string => re.source;
+
+const STANDARD_PROPS = new Set(['tvgNo', 'name', 'logo', 'group']);
+
+const toProperties = (obj?: Record<string, Primitive>): Properties | undefined => {
+    if (!obj) return undefined;
+
+    const plain: Record<string, Primitive> = {};
+    const extra: Record<string, Primitive> = {};
+
+    for (const [k, v] of Object.entries(obj)) {
+        if (k === 'match') continue;
+        (STANDARD_PROPS.has(k) ? plain : extra)[k] = v;
     }
-    return props;
-}
 
-const toMatchs = (arr: any[]): { match: RegExp }[] => {
-    return arr.map((item: any) => ({ match: toRegExp(item.match) }));
-}
+    if (!Object.keys(plain).length && !Object.keys(extra).length) return undefined;
+    return { plain, extra };
+};
 
-const fromMatchs = (arr: { match: RegExp }[]): { match: string }[] => {
-    return arr.map(item => ({ match: fromRegExp(item.match) }));
-}
+const fromProperties = (p?: Properties): Record<string, Primitive> | undefined => {
+    if (!p) return undefined;
+    return { ...p.extra, ...p.plain };
+};
+
+const toMatches = (arr?: any[]): Match[] | undefined =>
+    arr?.map(e => ({
+        match: toRegExp(e.match),
+        properties: toProperties(e)
+    }));
+
+const fromMatches = (arr?: Match[]): any[] | undefined =>
+    arr?.map(e => {
+        const out: any = { match: fromRegExp(e.match) };
+        const props = fromProperties(e.properties);
+        if (props) Object.assign(out, props);
+        return out;
+    });
+
+const toMatchGroup = (obj?: any): MatchGroup | undefined => {
+    if (!obj) return undefined;
+
+    const group: MatchGroup = {};
+    if (obj.include) group.include = toMatches(obj.include);
+    if (obj.exclude) group.exclude = toMatches(obj.exclude);
+
+    return group.include || group.exclude ? group : undefined;
+};
+
+const fromMatchGroup = (group?: MatchGroup): any | undefined => {
+    if (!group) return undefined;
+
+    const out: any = {};
+    if (group.include) out.include = fromMatches(group.include);
+    if (group.exclude) out.exclude = fromMatches(group.exclude);
+
+    return Object.keys(out).length ? out : undefined;
+};
+
 
 
 class Config {
@@ -196,92 +239,57 @@ class Config {
         this.config = {} as Config;
     }
 
-    toTabs(obj: any): Tab[] {
-        const tabs: Tab[] = [];
-        for (const key in obj) {
-            const entry = obj[key];
-            const tab: Tab = {
-                name: key,
-                description: entry.description,
-                start: entry.start ? entry.start : undefined,
-                and: entry.and ? toRegExp(entry.and) : undefined,
-                merge: entry.merge ? entry.merge : undefined,
-                missing: entry.missing ? entry.missing : undefined
-            };
-            if (entry.groups) {
-                tab.groups = {
-                    ...entry.groups.include ? { include: toMatchs(entry.groups.include).map((e: any) => e.match) } : {},
-                    ...entry.groups.exclude ? { exclude: toMatchs(entry.groups.exclude).map((e: any) => e.match) } : {}
-                };
-            }
-            if (entry.sources) {
-                tab.sources = {
-                    ...entry.sources.include ? { include: toMatchs(entry.sources.include) } : {},
-                    ...entry.sources.exclude ? { exclude: toMatchs(entry.sources.exclude) } : {}
-                }
-            }
-            if (entry.properties)
-                tab.properties = toProperties(entry.properties);
+    toTabs(yamlTabs: any): Tab[] {
+        return Object.entries(yamlTabs).map(([name, raw]: any) => ({
+            name,
+            description: raw.description,
+            temp: raw.temp,
+            start: raw.start,
+            merge: raw.merge,
+            missing: raw.missing,
+            and: raw.and ? toRegExp(raw.and) : undefined,
 
-            if (entry.include)
-                tab.include = entry.include.map((inc: any) => ({
-                    match: toRegExp(inc.match),
-                    properties: toProperties(inc)
-                }));
-            if (entry.exclude)
-                tab.exclude = toRegExp(entry.exclude);
+            groups: toMatchGroup(raw.groups),
+            sources: toMatchGroup(raw.sources),
 
-            tabs.push(tab);
-        }
-        return tabs;
+            properties: toProperties(raw.properties),
+            include: toMatches(raw.include),
+            exclude: toMatches(raw.exclude)
+        }));
     }
 
     fromTabs(tabs: Tab[]): any {
-        const obj: any = {};
+        const out: any = {};
+
         for (const tab of tabs) {
-            const entry: any = { description: tab.description };
-            if (tab.merge !== undefined)
-                entry.merge = tab.merge;
-            if (tab.groups && (tab.groups.include || tab.groups.exclude)) {
-                entry.groups = {};
-                if (tab.groups.include)
-                    entry.groups.include = fromMatchs(tab.groups.include);
-                if (tab.groups.exclude)
-                    entry.groups.exclude = fromMatchs(tab.groups.exclude);
-            }
-            if (tab.sources && (tab.sources.include || tab.sources.exclude)) {
-                entry.sources = {};
-                if (tab.sources.include)
-                    entry.sources.include = fromMatchs(tab.sources.include);
-                if (tab.sources.exclude)
-                    entry.sources.exclude = fromMatchs(tab.sources.exclude);
-            }
-            if (tab.properties && (tab.properties.plain || tab.properties.extra)) {
-                entry.properties = fromProperties(tab.properties);
-                if (Object.keys(entry.properties).length === 0) {
-                    delete entry.properties;
-                }
-            }
-            if (tab.start !== undefined)
-                entry.start = tab.start;
-            if (tab.and)
-                entry.and = tab.and.source;
-            if (tab.include)
-                entry.include = tab.include.map(inc => {
-                    const includeEntry: any = { match: fromRegExp(inc.match) };
-                    if (inc.properties && (inc.properties.plain || inc.properties.extra)) {
-                        includeEntry.properties = fromProperties(inc.properties);
-                        if (Object.keys(includeEntry.properties).length === 0) {
-                            delete includeEntry.properties;
-                        }
-                    }
-                    return includeEntry;
-                });
-            if (tab.exclude)
-                entry.exclude = fromRegExp(tab.exclude);
-            obj[tab.name] = entry;
+            const entry: any = {};
+
+            if (tab.description) entry.description = tab.description;
+            if (tab.start !== undefined) entry.start = tab.start;
+            if (tab.merge !== undefined) entry.merge = tab.merge;
+            if (tab.missing !== undefined) entry.missing = tab.missing;
+            if (tab.temp !== undefined) entry.temp = tab.temp;
+            if (tab.and) entry.and = fromRegExp(tab.and);
+
+            const groups = fromMatchGroup(tab.groups);
+            if (groups) entry.groups = groups;
+
+            const sources = fromMatchGroup(tab.sources);
+            if (sources) entry.sources = sources;
+
+            const props = fromProperties(tab.properties);
+            if (props) entry.properties = props;
+
+            const include = fromMatches(tab.include);
+            if (include) entry.include = include;
+
+            const exclude = fromMatches(tab.exclude);
+            if (exclude) entry.exclude = exclude;
+
+            out[tab.name] = entry;
         }
-        return obj;
+
+        return out;
     }
 
     async load() {
