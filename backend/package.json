@@ -1,6 +1,6 @@
 {
   "name": "lightiptv",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "Lightweight web IPTV viewer for M3U + XMLTV sources",
   "main": "server.js",
   "type": "module",
@@ -8,7 +8,7 @@
     "start": "tsx app/index.ts",
     "debug": "node --inspect ./node_modules/tsx/dist/cli.mjs app/index.ts",
     "dev": "nodemon",
-    "build": "tsc && rm -rf dist/public dist/data && mkdir -p dist/public dist/data dist/data/channels dist/data/logs && cp -R app/public/* dist/public/ && rm -rf dist/public/cached && mkdir -p dist/public/cached"
+    "build": "tsc && rm -rf dist/public dist/data dist/config && mkdir -p dist/public dist/data dist/data/channels dist/data/logs dist/config && cp -R app/public/* dist/public/ && cp app/config/config.yml dist/config/config.yml && rm -rf dist/public/cached && mkdir -p dist/public/cached"
   },
   "keywords": [
     "iptv",

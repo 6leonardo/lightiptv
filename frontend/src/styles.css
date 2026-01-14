@@ -92,10 +92,58 @@ body {
   font-weight: 600;
 }
 
-.app-tabs button.active {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #0b0c10;
+.app-tabs button.app-toggle {
+  position: relative;
+  padding-left: 44px;
+}
+
+.app-tabs button.app-toggle::before,
+.app-tabs button.app-toggle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 999px;
+}
+
+.app-tabs button.app-toggle::before {
+  left: 12px;
+  width: 24px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border);
+}
+
+.app-tabs button.app-toggle::after {
+  left: 14px;
+  width: 10px;
+  height: 10px;
+  background: var(--text);
+  transition: left 0.2s ease;
+}
+
+.app-tabs button.app-toggle.active::after {
+  left: 24px;
+}
+
+.app-tabs button.app-toggle.active::before {
+  background: linear-gradient(135deg, var(--accent));
   border-color: transparent;
+}
+
+.app-tabs button.active {
+  /*
+  background: linear-gradient(135deg, var(--accent) );
+  color: #0b0c10;
+  */
+  color:var(--accent);
+  border-color: var(--accent);
+}
+
+.app-tabs button.app-toggle.active {
+  background: rgba(15, 18, 28, 0.9);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .app-tabs input {

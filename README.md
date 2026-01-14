@@ -61,7 +61,7 @@ environment:
 
 - **`./data:/app/app/data`**: Persisted app data (channels, logs, etc.)
 - **`./cache:/app/app/public/cached`**: Cached assets and HLS segments
-- **`./backend/app/config/config.yml:/app/app/config/config.yml`**: App configuration
+- **`./backend/app/config/config.yml:/app/app/config/config.yml`**: App configuration (map this file to edit settings)
 
 ## 🧩 Config file (config.yml)
 
@@ -148,6 +148,15 @@ docker-compose logs -f lightiptv
 
 # Stop
 docker-compose down
+```
+
+## 🧱 Multi-arch Docker build (x64 + arm64)
+
+Use Buildx to build and publish a multi-arch image:
+
+```bash
+docker buildx create --use --name lightiptv-builder
+docker buildx build --platform linux/amd64,linux/arm64 -t astevani/lightiptv:latest --push .
 ```
 
 ## 🌐 Access

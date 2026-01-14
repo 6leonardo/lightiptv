@@ -47,7 +47,9 @@ const publicDir = path.join(__dirname, '..', 'public');
 const frontendDist = path.join(publicDir, 'dist');
 const cachedDir = path.join(publicDir, 'cached');
 const dataDir = path.join(__dirname, '..', 'data');
-const ymlConfigPath = path.join(__dirname, 'config.yml');
+const backupDir = path.join(dataDir, 'backups');
+
+export const CONFIG_YML_PATH = path.join(__dirname, 'config.yml');
 
 // every key "dir" in sub objects if not exists will be automatically created
 export interface ConfigPath {
@@ -76,6 +78,9 @@ const Paths = {
     streams: {
         dir: path.join(cachedDir, 'streams'),
         web: '/cached/streams/',
+    },
+    backups: {
+        dir: backupDir,
     },
 }
 
@@ -294,7 +299,7 @@ class Config {
 
     async load() {
         try {
-            const content = await readFile(ymlConfigPath, 'utf8');
+            const content = await readFile(CONFIG_YML_PATH, 'utf8');
 
             let temp = parse(content);
 
@@ -361,7 +366,7 @@ class Config {
             delete temp.m3u.maxConnections;
             temp.tabs = this.fromTabs(this.config.tabs || []);
             const yamlStr = stringify(temp);
-            await writeFile(ymlConfigPath + '.1', yamlStr, 'utf8');
+            await writeFile(CONFIG_YML_PATH + '.1', yamlStr, 'utf8');
         } catch (err) {
             console.error("Impossibile salvare il file YAML:", err);
         }
@@ -373,4 +378,3 @@ await config.load();
 //await config.save();
 export const getConfig = () => config.getConfig();
 export const saveConfig = () => config.save();
-

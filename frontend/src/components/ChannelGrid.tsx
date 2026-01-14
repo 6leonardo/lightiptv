@@ -10,7 +10,6 @@ type ChannelGridProps = {
     onSelect: (channel: ChannelFrontend) => void;
 };
 
-
 export default function ChannelGrid({ channels, tabs, programs, onSelect }: ChannelGridProps) {
     const now = new Date();
     const [tabChannels, setTabChannels] = React.useState<Record<string, ChannelFrontend[]>>({});
@@ -29,7 +28,6 @@ export default function ChannelGrid({ channels, tabs, programs, onSelect }: Chan
         return map;
     }, [programs, now]);
 
-    
     useEffect(() => {
         if (tabs) {
             const tChannels: Record<string, ChannelFrontend[]> = {};
@@ -44,35 +42,40 @@ export default function ChannelGrid({ channels, tabs, programs, onSelect }: Chan
         <>
             {tabs &&
                 Object.keys(tabs).length > 0 &&
-                Object.keys(tabChannels).map((tabName) => tabChannels[tabName].length > 0 && (
-                    <div key={tabName} className="channel-grid-tab">                        
-                        <h2 className="channel-grid-tab-title">{tabName}</h2>
-                        <div className="channel-grid">
-                            {tabChannels[tabName].map((channel) => {
-                                return (
-                                    <ChannelCard
-                                        key={channel.id}
-                                        channel={channel}
-                                        program={programMap.get(channel.epgKey) || null}
-                                        onSelect={onSelect}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
-            {!(tabs && Object.keys(tabs).length > 0) &&
-                channels.map((channel) => {
-                    return (
-                        <div className="channel-grid">
+                Object.keys(tabChannels).map(
+                    (tabName) =>
+                        tabChannels[tabName].length > 0 && (
+                            <div key={tabName} className="channel-grid-tab">
+                                <h2 className="channel-grid-tab-title">{tabName}</h2>
+                                <div className="channel-grid">
+                                    {tabChannels[tabName].map((channel) => {
+                                        return (
+                                            <ChannelCard
+                                                key={channel.id}
+                                                channel={channel}
+                                                program={programMap.get(channel.epgKey) || null}
+                                                onSelect={onSelect}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )
+                )}
+            {!(tabs && Object.keys(tabs).length > 0) && (
+                <div className="channel-grid">
+                    {channels.map((channel) => {
+                        return (
                             <ChannelCard
                                 key={channel.tvgId}
                                 channel={channel}
                                 program={programMap.get(channel.epgKey) || null}
                                 onSelect={onSelect}
                             />
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
+            )}
         </>
-    )}
+    );
+}

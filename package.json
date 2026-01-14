@@ -1,6 +1,6 @@
 {
   "name": "iptv-viewer",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev:backend": "cd backend && npm run dev",
@@ -10,9 +10,9 @@
     "build:frontend": "cd frontend && npm run build",
     "build": "npm run build:frontend && npm run build:backend",
     "start": "cd backend && npm start",
-    "docker:build": "docker build -t astevani/lightiptv:$(node -p \"require('./package.json').version\") -t astevani/lightiptv:latest .",
-    "docker:push": "docker push astevani/lightiptv --all-tags",
-    "docker:release": "npm run docker:build && npm run docker:push"
+    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 -t astevani/lightiptv:$(node -p \"require('./package.json').version\") -t astevani/lightiptv:latest --push .",
+    "docker:push": "npm run docker:build",
+    "docker:release": "npm run docker:build"
   },
   "dependencies": {
     "yaml": "^2.8.2"

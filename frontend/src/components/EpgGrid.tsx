@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     Epg,
     Layout,
@@ -58,6 +58,7 @@ type PlanbyProgram = {
 export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [_, setSize] = useState({ width: 0, height: 600 });
+    const [nowTick, setNowTick] = useState(() => Date.now());
     const failedImages = useFailedImages();
     const channelMeta = useMemo(() => {
         const map = new Map<string, { name: string; logo: string | null }>();
@@ -83,6 +84,13 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
         return () => observer.disconnect();
     }, []);
 
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            setNowTick(Date.now());
+        }, 60000);
+        return () => window.clearInterval(timer);
+    }, []);
+
     const epgChannels = useMemo<PlanbyChannel[]>(
         () =>
             channels.map((channel) => ({
@@ -94,7 +102,7 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
     );
 
     const epgPrograms = useMemo<PlanbyProgram[]>(() => {
-        const now = new Date();
+        const now = new Date(nowTick);
         // Filtra solo programmi nell'intervallo: adesso - 1h fino a adesso + 11h
         const rangeStart = new Date(now.getTime() - 1 * 60 * 60 * 1000);
         const rangeEnd = new Date(now.getTime() + 11 * 60 * 60 * 1000);
@@ -126,15 +134,16 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
             epg.push(...channelPrograms);
         }
         return epg;
-    }, [programs, channels]);
+    }, [programs, channels, nowTick]);
 
     const [startDate, endDate] = useMemo(() => {
-        const now = new Date();
+        const now = new Date(nowTick);
         const start = new Date(now.getTime() - 1 * 60 * 60 * 1000); // -1 ora da adesso
         const end = new Date(now.getTime() + 11 * 60 * 60 * 1000); // +11 ore da adesso
 
         return [start.toISOString(), end.toISOString()];
-    }, []);
+    }, []); /*[nowTick]); non sposto la barra temporale se non si esce e rientra si sposta solo il now*/
+    const offsetStartHoursRange = useMemo(() => new Date(startDate).getHours(), [startDate]);
 
     const { getEpgProps, getLayoutProps } = useEpg({
         channels: epgChannels,
@@ -200,14 +209,19 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
     };
 
     const Timeline = (props: any) => {
-        const { time, dividers, formatTime } = useTimeline(props.numberOfHoursInDay, props.isBaseTimeFormat);
+        const offset = props.offsetStartHoursRange ?? 0;
+        const { time, dividers, formatTime } = useTimeline(
+            props.numberOfHoursInDay,
+            props.isBaseTimeFormat,
+            offset
+        );
 
         const renderDividers = () =>
             dividers.map((_: any, index: number) => <TimelineDivider key={index} width={props.hourWidth} />);
 
         const renderTime = (index: number) => (
             <TimelineBox key={index} width={props.hourWidth}>
-                <TimelineTime>{formatTime(index + props.offsetStartHoursRange).toLowerCase()}</TimelineTime>
+                <TimelineTime>{formatTime(index + offset).toLowerCase()}</TimelineTime>
                 <TimelineDividers>{renderDividers()}</TimelineDividers>
             </TimelineBox>
         );
@@ -229,10 +243,11 @@ export default function EpgGrid({ channels, programs, onStartChannel }: EpgGridP
                             {...props}
                             // Force props if missing
                             dayWidth={DAY_WIDTH}
-                            sidebarWidth={SIDEBAR_WIDTH}
+                            sidebarWidth={SIDEBAR_WIDTH}                            
                             isSidebar={true}
                             // Calculate hourWidth if missing (Planby should provide it but let's be safe)
                             hourWidth={HOUR_WIDTH}
+                            offsetStartHoursRange={offsetStartHoursRange}
                         />
                     )}
                     renderChannel={({ channel }: any) => (

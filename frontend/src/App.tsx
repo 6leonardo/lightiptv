@@ -70,16 +70,35 @@ export default function App() {
         const saved = localStorage.getItem("iptv_view");
         return saved === "channels" || saved === "now" || saved === "epg" ? saved : "channels";
     });
+    const [showTabs, setShowTabs] = useState(() => {
+        const saved = localStorage.getItem("iptv_tabs");
+        return saved === null ? true : saved === "true";
+    });
+
+    const [showEpg, setShowEpg] = useState(() => {
+        const saved = localStorage.getItem("iptv_epg");
+        return saved === null ? false : saved === "true";
+    });
     const [filterText, setFilterText] = useState("");
     const [locale, setLocale] = useState("it-IT");
+    const [nowTick, setNowTick] = useState(0);
 
     useEffect(() => {
         localStorage.setItem("iptv_view", view);
     }, [view]);
 
+    useEffect(() => {
+        localStorage.setItem("iptv_tabs", String(showTabs));
+    }, [showTabs]);
+
     const loadData = useCallback(async () => {
         try {
-            const [epg, channelData, config, tabsData] = await Promise.all([fetchEpgGrid(), fetchChannels(), fetchConfig(), fetchTabs()]);
+            const [epg, channelData, config, tabsData] = await Promise.all([
+                fetchEpgGrid(),
+                fetchChannels(),
+                fetchConfig(),
+                fetchTabs(),
+            ]);
             //console.log("Fetched config:", channelData.channels);
             setChannels(channelData.channels);
             setPrograms(epg.programs);
@@ -101,6 +120,13 @@ export default function App() {
 
     useSocketUpdates(loadData);
 
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            setNowTick((prev) => prev + 1);
+        }, 60000);
+        return () => window.clearInterval(timer);
+    }, []);
+
     const subtitle = useMemo(() => {
         if (!updatedAt) return "Waiting for update...";
         return `Updated at ${updatedAt.toLocaleTimeString(locale, {
@@ -109,7 +135,10 @@ export default function App() {
         })}`;
     }, [locale, updatedAt]);
 
-    const filteredChannels = useMemo(() => getFilteredChannels(channels, filterText), [channels, filterText]);
+    const filteredChannels = useMemo(
+        () => getFilteredChannels(channels, filterText, programs, showEpg),
+        [channels, filterText, showEpg, programs]
+    );
 
     const zapping = useZappingService(filteredChannels, 30);
 
@@ -120,7 +149,10 @@ export default function App() {
         [filteredEpgChannels, programs]
     );
 
-    const filteredNowPlaying = useMemo(() => getNowPlaying(filteredChannels, programs), [filteredChannels, programs]);
+    const filteredNowPlaying = useMemo(
+        () => getNowPlaying(filteredChannels, programs),
+        [filteredChannels, programs, nowTick]
+    );
 
     const handleStartChannel = useCallback(
         (channelId: string) => {
@@ -140,12 +172,32 @@ export default function App() {
                 {/* <div className="app-badge">Prossime {EPG_HOURS_AHEAD}h</div> */}
                 <div className="app-tabs">
                     <div className="app-tabs-buttons">
+                        {view == "channels" && (
+                            <>
+                                <button
+                                    type="button"
+                                    className={`app-toggle ${showTabs ? "active" : ""}`}
+                                    aria-pressed={showTabs}
+                                    onClick={() => setShowTabs((prev) => !prev)}
+                                >
+                                    Tabs
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`app-toggle ${showEpg ? "active" : ""}`}
+                                    aria-pressed={showEpg}
+                                    onClick={() => setShowEpg((prev) => !prev)}
+                                >
+                                    Epg
+                                </button>
+                            </>
+                        ) }
                         <button
                             type="button"
                             className={view === "channels" ? "active" : ""}
                             onClick={() => setView("channels")}
                         >
-                            Canali
+                            Channels
                         </button>
                         <button type="button" className={view === "now" ? "active" : ""} onClick={() => setView("now")}>
                             Now Playing
@@ -180,8 +232,17 @@ export default function App() {
             ) : view === "channels" ? (
                 <main className="app-main app-main-full">
                     <div className="app-epg-panel" style={{ overflowY: "auto", overflowX: "hidden" }}>
-                        <FilterPanel groups={groups} tabs={Object.keys(tabs)} setFilter={setFilterText} />
-                        <ChannelGrid channels={filteredChannels} tabs={tabs} programs={programs} onSelect={setActiveChannel} />
+                        <FilterPanel
+                            groups={groups}
+                            tabs={showTabs ? Object.keys(tabs) : []}
+                            setFilter={setFilterText}
+                        />
+                        <ChannelGrid
+                            channels={filteredChannels}
+                            tabs={showTabs ? tabs : undefined}
+                            programs={programs}
+                            onSelect={setActiveChannel}
+                        />
                     </div>
                 </main>
             ) : view === "now" ? (
@@ -189,19 +250,21 @@ export default function App() {
                     <div className="app-epg-panel" style={{ overflowY: "auto" }}>
                         <div className="now-playing-header">Now Playing</div>
                         <div className="now-playing-grid">
-                            {Array.from(filteredNowPlaying.channels.values()).sort((a, b) => parseInt(a.tvgNo || "10000") - parseInt(b.tvgNo || "10000")).map((channel) => {
-                                const program = filteredNowPlaying.programs.get(channel.id);
-                                if (!program || !program.preview) return null;
-                                return (
-                                    <NowPlayingCard
-                                        key={`${channel.id}`}
-                                        channel={channel}
-                                        program={program}
-                                        locale={locale}
-                                        onSelect={handleStartChannel}
-                                    />
-                                );
-                            })}
+                            {Array.from(filteredNowPlaying.channels.values())
+                                .sort((a, b) => parseInt(a.tvgNo || "10000") - parseInt(b.tvgNo || "10000"))
+                                .map((channel) => {
+                                    const program = filteredNowPlaying.programs.get(channel.id);
+                                    if (!program || !program.preview) return null;
+                                    return (
+                                        <NowPlayingCard
+                                            key={`${channel.id}`}
+                                            channel={channel}
+                                            program={program}
+                                            locale={locale}
+                                            onSelect={handleStartChannel}
+                                        />
+                                    );
+                                })}
                             {filteredNowPlaying.channels.size === 0 && (
                                 <div className="now-playing-empty">No programs currently playing with preview</div>
                             )}

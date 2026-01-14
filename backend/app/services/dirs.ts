@@ -1,5 +1,6 @@
-import { getConfig } from "../config/index.js";
+import { CONFIG_YML_PATH, getConfig } from "../config/index.js";
 import fs from 'fs';
+import path from "path";
 
 
 export function initDirs() {
@@ -15,5 +16,12 @@ export function initDirs() {
             }
         }
     }
-}
 
+    const backupDir = config.paths.backups.dir;
+
+    if (fs.existsSync(CONFIG_YML_PATH)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const backupPath = path.join(backupDir, `config-${timestamp}.yml`);
+        fs.copyFileSync(CONFIG_YML_PATH, backupPath);
+    }
+}
