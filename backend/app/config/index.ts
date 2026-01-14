@@ -93,12 +93,13 @@ export interface ConfigXMLTVSource {
     threadfin?: boolean;
 }
 
-interface Tab {
+export interface Tab {
     name: string;
     description?: string;
     merge?: boolean;
-    groups?: { include?: RegExp, exclude?: RegExp };
-    sources?: { include?: RegExp, exclude?: RegExp };
+    missing?: boolean;
+    groups?: { include?: { match: RegExp }[], exclude?: { match: RegExp }[] };
+    sources?: { include?: { match: RegExp }[], exclude?: { match: RegExp }[] };
     start?: number;
     and?: RegExp;
     properties?: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> };
@@ -143,14 +144,14 @@ interface Config {
 const toRegExp = (str: string): RegExp => {
     if (/^\/.*\/$/.test(str)) {
         const content = str.slice(1, -1);
-        return new RegExp(content);
+        return new RegExp(content, 'i');
     } else {
         return new RegExp(str, 'i');
     }
 }
 
 const fromRegExp = (reg: RegExp): string => {
-    return `/${reg.source}/`;
+    return reg.source;
 }
 
 const isExtraProperty = (prop: string): boolean => {
@@ -170,6 +171,7 @@ const toProperties = (properties: Record<string, string | number | boolean>) => 
     if (!properties) return undefined;
     const props: { plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } = { plain: {}, extra: {} };
     for (const propKey in properties) {
+        if (propKey === 'match') continue;
         if (isExtraProperty(propKey))
             props.extra![propKey] = properties[propKey];
         else
@@ -177,6 +179,15 @@ const toProperties = (properties: Record<string, string | number | boolean>) => 
     }
     return props;
 }
+
+const toMatchs = (arr: any[]): { match: RegExp }[] => {
+    return arr.map((item: any) => ({ match: toRegExp(item.match) }));
+}
+
+const fromMatchs = (arr: { match: RegExp }[]): { match: string }[] => {
+    return arr.map(item => ({ match: fromRegExp(item.match) }));
+}
+
 
 class Config {
     config: Config;
@@ -194,31 +205,29 @@ class Config {
                 description: entry.description,
                 start: entry.start ? entry.start : undefined,
                 and: entry.and ? toRegExp(entry.and) : undefined,
-                merge: entry.merge ? entry.merge : undefined
+                merge: entry.merge ? entry.merge : undefined,
+                missing: entry.missing ? entry.missing : undefined
             };
             if (entry.groups) {
-                const group = { include: entry.groups.include ? toRegExp(entry.groups.include) : undefined, exclude: entry.groups.exclude ? toRegExp(entry.groups.exclude) : undefined };
-                if (group.include || group.exclude)
-                    tab.groups = group
+                tab.groups = {
+                    ...entry.groups.include ? { include: toMatchs(entry.groups.include).map((e: any) => e.match) } : {},
+                    ...entry.groups.exclude ? { exclude: toMatchs(entry.groups.exclude).map((e: any) => e.match) } : {}
+                };
             }
             if (entry.sources) {
-                const source = { include: entry.sources.include ? toRegExp(entry.sources.include) : undefined, exclude: entry.sources.exclude ? toRegExp(entry.sources.exclude) : undefined };
-                if (source.include || source.exclude)
-                    tab.sources = source
+                tab.sources = {
+                    ...entry.sources.include ? { include: toMatchs(entry.sources.include) } : {},
+                    ...entry.sources.exclude ? { exclude: toMatchs(entry.sources.exclude) } : {}
+                }
             }
             if (entry.properties)
                 tab.properties = toProperties(entry.properties);
 
             if (entry.include)
-                tab.include = entry.include.map((inc: any) => {
-                    const includeEntry: { match: RegExp, properties?:{ plain?: Record<string, string | number | boolean>, extra?: Record<string, string | number | boolean> } } = {
-                        match: toRegExp(inc.match)
-                    };
-                    if (inc.properties)
-                        includeEntry.properties = toProperties(inc.properties);
-
-                    return includeEntry;
-                });
+                tab.include = entry.include.map((inc: any) => ({
+                    match: toRegExp(inc.match),
+                    properties: toProperties(inc)
+                }));
             if (entry.exclude)
                 tab.exclude = toRegExp(entry.exclude);
 
@@ -236,16 +245,16 @@ class Config {
             if (tab.groups && (tab.groups.include || tab.groups.exclude)) {
                 entry.groups = {};
                 if (tab.groups.include)
-                    entry.groups.include = fromRegExp(tab.groups.include);
+                    entry.groups.include = fromMatchs(tab.groups.include);
                 if (tab.groups.exclude)
-                    entry.groups.exclude = fromRegExp(tab.groups.exclude);
+                    entry.groups.exclude = fromMatchs(tab.groups.exclude);
             }
             if (tab.sources && (tab.sources.include || tab.sources.exclude)) {
                 entry.sources = {};
                 if (tab.sources.include)
-                    entry.sources.include = fromRegExp(tab.sources.include);
+                    entry.sources.include = fromMatchs(tab.sources.include);
                 if (tab.sources.exclude)
-                    entry.sources.exclude = fromRegExp(tab.sources.exclude);
+                    entry.sources.exclude = fromMatchs(tab.sources.exclude);
             }
             if (tab.properties && (tab.properties.plain || tab.properties.extra)) {
                 entry.properties = fromProperties(tab.properties);
@@ -344,7 +353,7 @@ class Config {
             delete temp.m3u.maxConnections;
             temp.tabs = this.fromTabs(this.config.tabs || []);
             const yamlStr = stringify(temp);
-            await writeFile(ymlConfigPath, yamlStr, 'utf8');
+            await writeFile(ymlConfigPath + '.1', yamlStr, 'utf8');
         } catch (err) {
             console.error("Impossibile salvare il file YAML:", err);
         }
@@ -353,7 +362,7 @@ class Config {
 
 const config = new Config();
 await config.load();
-await config.save();
+//await config.save();
 export const getConfig = () => config.getConfig();
 export const saveConfig = () => config.save();
 

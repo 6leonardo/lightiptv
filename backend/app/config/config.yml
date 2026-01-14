@@ -1,135 +1,149 @@
 m3u:
+  max-connections: 10
+
   sources:
     greenarw_tv_italia:
-      descriptiotvgNo: Greenarw TV Italia
+      descriptiotvgNo: "Greenarw TV Italia"
       url: https://gist.githubusercontent.com/greenarw/efa4568ed2fa2e53a1aec9073d027243/raw/7a50a2c1643d1548971928aebdd9e906a2043b9f/tv_italia.m3u
       active: false
-      proxied: false
-      threadfin: false
     iptv_org_italiano:
-      descriptiotvgNo: IPTV Org Italiano
+      descriptiotvgNo: "IPTV Org Italiano"
       alternate: https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md
       url: https://iptv-org.github.io/iptv/languages/ita.m3u
       active: true
-      proxied: false
-      threadfin: false
-  max-connections: 10
+
 xmltv:
   sources:
     it_dttsat_full:
-      descriptiotvgNo: DTT SAT Italia Full EPG
+      descriptiotvgNo: "DTT SAT Italia Full EPG"
       url: http://116.202.210.205/test/it_dttsat_full.xml
       active: true
-      threadfin: false
+
 tabs:
   Italia:
     include:
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
-      - match: /(?:)/
+      - match: Rai 1
+        tvgNo: 1
+      - match: Rai 2
+        tvgNo: 2
+      - match: Rai 3
+        tvgNo: 3
+      - match: Rete 4
+        tvgNo: 4
+      - match: Canale 5
+        tvgNo: 5
+      - match: Italia 1
+        tvgNo: 6
+      - match: /^LA7/$
+        tvgNo: 7
+      - match: TV8
+        tvgNo: 8
+      - match: NOVE
+        tvgNo: 9
+      - match: La5
+        tvgNo: 10
+      - match: /^LA7d$/
+        tvgNo: 11
+      - match: Iris
+        tvgNo: 12
+      - match: Cielo
+        tvgNo: 13
+      - match: Rai Movie
+        tvgNo: 14
+      - match: Rai Premium
+        tvgNo: 15
+      - match: Rai Storia
+        tvgNo: 16
+      - match: Rai Sport
+        tvgNo: 17
+      - match: Rai Scuola
+        tvgNo: 18
+      - match: 20 Mediaset
+        tvgNo: 20
+      - match: Mediaset Extra
+        tvgNo: 21
+      - match: Mediaset Italia
+        tvgNo: 22
+      - match: GIALLO
+        tvgNo: 23
+      - match: TOP Crime
+        tvgNo: 24
+      - match: Twentyseven
+        tvgNo: 27
+      - match: Cine 34
+        tvgNo: 34
+      - match: Focus
+        tvgNo: 35
+      - match: Real Time
+        tvgNo: 36
+      - match: QVC
+        tvgNo: 37
+      - match: Food Network
+        tvgNo: 38
+      - match: Warner TV
+        tvgNo: 39
+      - match: RaiPlay
+        tvgNo: 40
+      - match: DMAX
+        tvgNo: 41
+      - match: Italia 53
+        tvgNo: 42
+      - match: SPORTITALIA
+        tvgNo: 43
+      - match: SUPERTENNIS
+        tvgNo: 44
+      - match: VH1
+        tvgNo: 45
+      - match: Warner TV
+        tvgNo: 46
+      - match: ALMA TV
+        tvgNo: 47
+      - match: TV2000
+        tvgNo: 48
+
   News_Italia:
+    start: 50
+    groups:
+      include:
+        - match: news
     include:
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
+      - match: Rai News 24
+      - match: TGCOM 24
+      - match: Sky TG24
+      - match: Parlamento
+
   Cartoni:
     start: 200
     include:
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
+      - match: Boing
+      - match: K2
+      - match: Rai Gulp
+      - match: Rai YoYo
+      - match: frisbee
+      - match: Boing Plus
+      - match: Cartoonito
+      - match: Super!
   Radio:
     start: 100
     and: radio
     include:
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /(?:)/
-      - match: /function match() { [native code] }/
-      - match: /(?:)/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
-      - match: /function match() { [native code] }/
+      - match: Capital
+      - match: Deejay
+      - match: m2o
+      - match: RDS
+      - match: RTL
+      - match: zeta
+      - match: freccia
+      - match: 101
+      - match: monte carlo
+      - match: 105
+      - match: virgin
+      - match: Deejay
+      - match: italia
+
   Altri:
     start: 1000
-    include:
-      - match: /function match() { [native code] }/
-paths:
-  public: /home/kali/omai/iptv/backend/app/public
-  frontend: /home/kali/omai/iptv/backend/app/public/dist
-  cached: /home/kali/omai/iptv/backend/app/public/cached
-  data: /home/kali/omai/iptv/backend/app/data
-  channels:
-    db: /home/kali/omai/iptv/backend/app/data/channels.json
-  logs:
-    dir: /home/kali/omai/iptv/backend/app/data/logs
-  images:
-    dir: /home/kali/omai/iptv/backend/app/public/cached/images
-    web: /cached/images/
-  streams:
-    dir: /home/kali/omai/iptv/backend/app/public/cached/streams
-    web: /cached/streams/
-streamlink:
-  userAgent: Threadfin
-address: 0.0.0.0
-port: 3005
-locale: it-IT
-maxStreams: 4
-epgCacheDuration: 3600000
-streamCleanupInterval: 30000
-streamInactivityTimeout: 10000
-tunerReleaseTimeout: 15000
-ffmpeg:
-  hlsTime: 4
-  hlsListSize: 8
-  preset: veryfast
-  framerate: 50
-  gopSize: 100
-  audioBitrate: 128k
+    missingx: true
+    sources:
+      include: 
+        - match: pippo
